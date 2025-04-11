@@ -1,8 +1,9 @@
 defmodule Mafia.Types do
   @moduledoc """
-  마피아 게임에서 사용되는 공통 타입 정의 모듈
+  마피아 게임에서 사용하는 타입 정의 모듈
   """
   @type id :: String.t()
+
   @type team :: :mafia | :citizen | :neutral
   @type player :: %{
     id: id(),
@@ -10,22 +11,24 @@ defmodule Mafia.Types do
     role: String.t(),
     team: team(),
     alive?: boolean(),
-    target_id: id() | nil
-  }
-
-  @type night_action :: :death | :protection
-  @type night_event :: %{
-    action: night_action(),
-    target: String.t()
+    targets: [id()]
   }
 
   @type phase :: :day | :discussion | :vote | :defense | :judgement | :night
   @type game_state :: %{
+    id: id(),
     day_count: non_neg_integer(),
     phase: phase(),
     players: %{id() => player()},
-    night_event: night_event() | nil,
-    alive_mafia: non_neg_integer(),
-    alive_citizen: non_neg_integer()
+    pending_actions: %{atom() => %{actor: id(), target: id()}}
+  }
+
+  @type room_state :: %{
+    id: id(),
+    name: String.t() | nil,
+    host: id(),
+    game_started: boolean(),
+    members: %{id() => %{name: String.t(), meeting: id() | nil}},
+    meetings: %{id() => %{name: String.t(), members: %{id() => boolean()}}}  # mute
   }
 end

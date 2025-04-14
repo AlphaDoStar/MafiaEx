@@ -75,7 +75,8 @@ defmodule Mafia.API do
           Mafia.User.API.join_room(user_id, room_id)
 
           room_name = Mafia.Room.API.get_name(room_id)
-          message = "#{room_name} 방에 입장했습니다."
+          member_count = Mafia.Room.API.get_member_count(room_id)
+          message = "#{room_name} 방에 입장했습니다.\n현재 인원: #{member_count}명"
           Mafia.Messenger.send_text(user_id, message)
           {:ok, :success}
         else

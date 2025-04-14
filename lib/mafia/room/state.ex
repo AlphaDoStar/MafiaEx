@@ -5,9 +5,9 @@ defmodule Mafia.Room.State do
   @impl true
   @spec init([{:id, Types.id()}, {:host, {Types.id(), String.t()}}]) ::
     {:ok, Types.room_state()}
-  def init(id: room_id, host: {host_id, host_name}) do
+  def init(id: _room_id, host: {host_id, host_name}) do
     {:ok, %{
-      id: room_id,
+      # id: room_id,
       name: nil,
       host: host_id,
       game_started: false,

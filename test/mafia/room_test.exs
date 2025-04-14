@@ -12,7 +12,7 @@ defmodule TestAdapter do
   end
 end
 
-defmodule MafiaTest do
+defmodule Mafia.RoomTest do
   use ExUnit.Case, async: false
   doctest Mafia
 
@@ -24,7 +24,7 @@ defmodule MafiaTest do
     {:ok, supervisor_pid: pid}
   end
 
-  @tag :test_1
+  @tag :room_test_1
   test "슈퍼바이저 실행", %{supervisor_pid: pid} do
     assert Process.alive?(pid)
 
@@ -36,7 +36,7 @@ defmodule MafiaTest do
     assert Application.get_env(:mafia, :client_adapter) == TestAdapter
   end
 
-  @tag :test_2
+  @tag :room_test_2
   test "방 생성 및 이름 설정" do
     assert Mafia.API.create_room("001", "AlphaDo") === {:ok, :success}
 
@@ -55,7 +55,7 @@ defmodule MafiaTest do
     |> IO.inspect(pretty: true)
   end
 
-  @tag :test_3
+  @tag :room_test_3
   test "방 참여 로직" do
     Mafia.API.create_room("001", "AlphaDo")
     Mafia.API.set_room_name("001", "테스트 방")
@@ -67,7 +67,7 @@ defmodule MafiaTest do
     assert Mafia.API.join_room("003", room_id, "샌즈") === {:ok, :success}
   end
 
-  @tag :test_4
+  @tag :room_test_4
   test "메시지 브로드캐스트" do
     Mafia.API.create_room("001", "AlphaDo")
     Mafia.API.set_room_name("001", "테스트 방")
@@ -81,7 +81,7 @@ defmodule MafiaTest do
     Mafia.API.broadcast_user_message("003", "나는 샌즈")
   end
 
-  @tag :test_5
+  @tag :room_test_5
   test "방장 권한 및 방장 이전" do
     Mafia.API.create_room("001", "AlphaDo")
     Mafia.API.set_room_name("001", "테스트 방")
@@ -101,7 +101,7 @@ defmodule MafiaTest do
     assert Mafia.API.leave_room("001") === {:ok, :success}
   end
 
-  @tag :test_6
+  @tag :room_test_6
   test "방 삭제 로직" do
     Mafia.API.create_room("001", "AlphaDo")
     Mafia.API.set_room_name("001", "테스트 방")

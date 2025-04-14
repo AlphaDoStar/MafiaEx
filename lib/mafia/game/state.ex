@@ -17,8 +17,6 @@ defmodule Mafia.Game.State do
 
   @impl true
   def handle_call(:begin_day, _from, state) do
-    # Mafia.Room.API.begin_day(state.room_id, state.players)
-
     new_state =
       %{
         state |
@@ -31,14 +29,20 @@ defmodule Mafia.Game.State do
   end
 
   @impl true
+  def handle_call(:begin_night, _from, state) do
+    {:reply, :ok, state}
+  end
+
+  @impl true
   def handle_call(:process_night, _from, state) do
-    # Mafia.Room.API.announce
+
 
     {:reply, :ok, state}
   end
 end
 
 %{
+  id: "game id (=room id)",
   day_count: 1,
   phase: :day,
   players: %{

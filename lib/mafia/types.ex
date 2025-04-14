@@ -24,7 +24,7 @@ defmodule Mafia.Types do
   }
 
   @type room_state :: %{
-    id: id(),
+    # id: id(),
     name: String.t() | nil,
     host: id(),
     game_started: boolean(),

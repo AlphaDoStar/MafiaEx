@@ -1,0 +1,240 @@
+defmodule Mafia.Game.Server do
+  use GenServer
+  alias Mafia.Game.{State, Role}
+
+  @impl true
+  @spec init(Mafia.Room.State.t()) :: {:ok, State.t()}
+  def init(%Mafia.Room.State{} = room_state) do
+    id = room_state.id
+    players = room_state.members |> Enum.map(&member_to_player/1)
+    settings = room_state.settings
+    {:ok, Mafia.Game.State.new(id, players, settings)}
+  end
+
+  @impl true
+  def handle_call(:begin_game, _from, %State{} = state) do
+    new_state = %State{state | players: assign_roles(state)}
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call(:begin_day, _from, %State{} = state) do
+    new_state =
+      %State{
+        state |
+        day_count: state.day_count + 1,
+        phase: :day,
+        phase_states: %{
+          state.phase_states |
+          day: %{}
+        }
+      }
+
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call(:begin_discussion, _from, %State{} = state) do
+   new_state =
+      %State{
+        state |
+        phase: :discussion,
+        phase_states: %{
+          state.phase_states |
+          discussion: %{shortened: %{}}
+        }
+      }
+
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call({:time_adjusted?, id}, _from, state) do
+    adjusted_time = get_in(state, [:phase_states, :discussion, :adjusted_time, id]) || false
+    {:reply, adjusted_time, state}
+  end
+
+  @impl true
+  def handle_call({:extend_time, id, ms}, _from, state) do
+    Mafia.Game.Timer.extend(state.id, ms)
+    new_state = put_in(state, [:phase_states, :discussion, :adjusted_time, id], true)
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call({:reduce_time, id, ms}, _from, state) do
+    Mafia.Game.Timer.reduce(state.id, ms)
+    new_state = put_in(state, [:phase_states, :discussion, :adjusted_time, id], true)
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call(:begin_vote, _from, %State{} = state) do
+    new_state =
+      %State{
+        state |
+        phase: :vote,
+        phase_states: %{
+          state.phase_states |
+          vote: %{candidates: %{}, counts: %{}, voted: %{}, result: %{}}
+        }
+      }
+
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call({:voted?, id}, _from, state) do
+    voted = get_in(state, [:phase_states, :vote, :voted, id]) || false
+    {:reply, voted, state}
+  end
+
+  @impl true
+  def handle_call({:vote, voter_id, index}, _from, state) do
+    target_id = get_in(state, [:phase_states, :vote, :candidates, index])
+    new_state =
+      state
+      |> update_in([:phase_states, :vote, :counts, target_id], &((&1 || 0) + 1))
+      |> put_in([:phase_states, :vote, :voted, voter_id], true)
+
+    total_votes =
+      new_state.phase_states.vote.counts
+      |> Map.values()
+      |> Enum.sum()
+
+    {:reply, total_votes, new_state}
+  end
+
+  @impl true
+  def handle_call(:process_vote, _from, state) do
+    sorted_counts =
+      state.phase_states.vote.counts
+      |> Enum.sort_by(fn {_id, count} -> count end, :desc)
+
+    tied =
+      sorted_counts
+      |> Enum.filter(fn {_id, count} -> count === hd(sorted_counts) |> elem(1) end)
+      |> length() > 1
+
+    result = %{counts: sorted_counts, tied: tied}
+    new_state = put_in(state.phase_states.vote.result, result)
+
+    {:reply, result, new_state}
+  end
+
+  @impl true
+  def handle_call(:begin_defense, _from, state) do
+    new_state = put_in(state.phase, :defense)
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call(:begin_judgment, _from, %State{} = state) do
+    new_state =
+      %State{
+        state |
+        phase: :judgment,
+        phase_states: %{
+          state.phase_states |
+          judgment: %{
+            approvals: 0,
+            rejections: 0,
+            judged: %{}
+          }
+        }
+      }
+
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call({:judged?, id}, _from, state) do
+    judged = get_in(state, [:phase_states, :judgment, :judged, id]) || false
+    {:reply, judged, state}
+  end
+
+  @impl true
+  def handle_call({:judge, id, approved}, _from, state) do
+    new_state =
+      case approved do
+        true -> update_in(state.phase_states.judgment.approvals, &(&1 + 1))
+        false -> update_in(state.phase_states.judgment.rejections, &(&1 + 1))
+      end
+      |> put_in([:phase_states, :judgment, :judged, id], true)
+
+    %{approvals: approvals, rejections: rejections} = new_state.phase_states.judgment
+    total_votes = approvals + rejections
+
+    {:reply, total_votes, new_state}
+  end
+
+  @impl true
+  def handle_call(:process_judgment, _from, _state) do
+    # %{approvals: approvals, rejections: rejections} = state.phase_states.judgment
+
+  end
+
+  @impl true
+  def handle_call(:begin_night, _from, state) do
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:get_target_list, _id}, _from, _state) do
+
+  end
+
+  @impl true
+  def handle_call(:process_night, _from, state) do
+
+
+    {:reply, :ok, state}
+  end
+
+  defp member_to_player({id, %{name: name}}) do
+    Mafia.Game.Player.new(id, name)
+  end
+
+  defp assign_roles(state) do
+    case map_size(state.players) do
+      5 -> assign_specific_roles(state, %{mafia: 1, lover: 2}, 5)
+      10 -> assign_specific_roles(state, %{mafia: 2, lover: 2}, 10)
+      count -> assign_specific_roles(state, %{mafia: 1, lover: 2}, count)
+    end
+  end
+
+  defp assign_specific_roles(state, role_counts, count) do
+    new_role_counts =
+      case state.settings.mafia_count do
+        nil -> role_counts
+        count -> Map.put(role_counts, :mafia, count)
+      end
+      |> Enum.map(fn {role_atom, count} ->
+        {Role.Manager.role_module_by_atom(role_atom), count}
+      end)
+
+    roles = generate_roles(state.settings.active_roles, new_role_counts, count) |> Enum.shuffle()
+
+    [state.players, roles]
+    |> Enum.zip()
+    |> Enum.map(fn {{id, player}, role} -> {id, update_player_role(player, role)} end)
+    |> Map.new()
+  end
+
+  defp generate_roles(role_setting, role_counts, count) do
+    active_roles = role_setting |> Map.filter(fn {_role, active} -> active end) |> Map.keys()
+    fixed_roles = for {role, count} <- role_counts, role in active_roles, _ <- 1..count, do: role
+    rest_roles =
+      role_setting
+      |> Map.filter(fn {role, active} -> active and role not in active_roles end)
+      |> Map.keys()
+      |> Stream.concat(Stream.repeatedly(fn -> Role.Citizen end))
+      |> Enum.take(count - length(fixed_roles))
+
+    fixed_roles ++ rest_roles
+  end
+
+  defp update_player_role(player, role_module) do
+    %{player | role: apply(role_module, :new, [])}
+  end
+end

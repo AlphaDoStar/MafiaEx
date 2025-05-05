@@ -10,7 +10,7 @@ defmodule Mafia.Types do
     name: String.t(),
     role: String.t(),
     team: team(),
-    alive?: boolean(),
+    alive: boolean(),
     targets: [id()]
   }
 

@@ -14,13 +14,12 @@ defmodule Mafia.Room.Supervisor do
     room_id = UUID.uuid4()
     spec = %{
       id: :undefined,
-      start: {Mafia.Room.API, :start_link, [[id: room_id, host: {user_id, user_name}]]},
+      start: {Mafia.Room.API, :start_link, [[host: {user_id, user_name}, id: room_id]]},
       restart: :transient
     }
 
     case DynamicSupervisor.start_child(__MODULE__, spec) do
       {:ok, _pid} -> {:ok, room_id}
-      {:error, {:already_started, _pid}} -> {:error, :already_exists}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -38,6 +37,6 @@ defmodule Mafia.Room.Supervisor do
 
   def get_all_room_names do
     get_all_room_ids()
-    |> Enum.map(&Mafia.Room.API.get_name/1)
+    |> Enum.map(&Mafia.Room.API.name/1)
   end
 end

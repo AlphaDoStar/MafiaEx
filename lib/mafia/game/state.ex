@@ -1,61 +1,79 @@
 defmodule Mafia.Game.State do
-  use GenServer
-  alias Mafia.Types
+  @moduledoc """
+  Mafia.Game.Server의 상태 구조체
+  """
+  alias Mafia.Game.Player
+  alias Mafia.Room.State
 
-  @impl true
-  @spec init([{:id, Types.id()}, {:players, %{Types.id() => Types.player()}}]) ::
-    {:ok, Types.game_state()}
-  def init(id: id, players: players) do
-    {:ok, %{
-      id: id,
-      day_count: 1,
-      phase: :day,
-      players: players,
-      pending_actions: %{}
-    }}
-  end
-
-  @impl true
-  def handle_call(:begin_day, _from, state) do
-    new_state =
-      %{
-        state |
-        day_count: state.day_count + 1,
-        phase: :day,
-        pending_actions: %{}
+  @type id :: String.t()
+  @type phase :: :day | :discussion | :vote | :defense | :judgment | :night
+  @type action :: %{priority: pos_integer(), action: atom(), target: id()}
+  @type t :: %__MODULE__{
+    id: id(),
+    day_count: non_neg_integer(),
+    phase: phase(),
+    players: %{id() => Player.t()},
+    settings: State.settings(),
+    phase_states: %{
+      day: %{},
+      discussion: %{
+        adjusted_time: %{id() => boolean()}
+      },
+      vote: %{
+        candidates: %{pos_integer() => id()},
+        counts: %{id() => pos_integer()},
+        voted: %{id() => boolean()},
+        result: %{
+          counts: [{id(), pos_integer()}],
+          tied: boolean()
+        }
+      },
+      defense: %{},
+      judgment: %{
+        approvals: non_neg_integer(),
+        rejections: non_neg_integer(),
+        judged: %{id() => boolean()},
+      },
+      night: %{
+        actions: %{atom() => action()}
       }
+    }
+  }
 
-    {:reply, :ok, new_state}
-  end
+  @enforce_keys [:id, :players, :settings]
+  defstruct [
+    :id,
+    :players,
+    :settings,
+    day_count: 0,
+    phase: :day,
+    phase_states: %{
+      day: %{},
+      discussion: %{
+        adjusted_time: %{}
+      },
+      vote: %{
+        candidates: %{},
+        counts: %{},
+        voted: %{},
+        result: %{
+          counts: [],
+          tied: false
+        }
+      },
+      defense: %{},
+      judgment: %{
+        approvals: 0,
+        rejections: 0,
+        judged: %{}
+      },
+      night: %{
+        actions: %{}
+      }
+    }
+  ]
 
-  @impl true
-  def handle_call(:begin_night, _from, state) do
-    {:reply, :ok, state}
-  end
-
-  @impl true
-  def handle_call(:process_night, _from, state) do
-
-
-    {:reply, :ok, state}
+  def new(id, players, settings) do
+    %__MODULE__{id: id, players: players, settings: settings}
   end
 end
-
-%{
-  id: "game id (=room id)",
-  day_count: 1,
-  phase: :day,
-  players: %{
-    "id" => %{
-      name: "user name",
-      team: :mafia,
-      role: :mafia,
-      alive?: true,
-      targets: []
-    }
-  },
-  pending_actions: %{
-    kill: "id",
-    protect: "id"
-  }
-}

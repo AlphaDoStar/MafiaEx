@@ -127,12 +127,12 @@ defmodule Mafia.Game.Timer do
   end
 
   defp start_timer(%{duration: duration} = state, callbacks) when duration <= 0 do
-    main_callback = callbacks |> Map.get(:main)
+    main_callback = Map.get(callbacks, :main, fn -> nil end)
     send(self(), {:timer_expired, :main, main_callback})
     %{state | callbacks: %{}, timer_refs: %{}}
   end
   defp start_timer(state, callbacks) do
-    main_callback = callbacks |> Map.get(:main)
+    main_callback = Map.get(callbacks, :main, fn -> nil end)
     main_ref = Process.send_after(self(), {:timer_expired, :main, main_callback}, state.duration)
 
     milestone_callbacks = callbacks |> Map.delete(:main)

@@ -1,4 +1,4 @@
-defmodule Mafia.Game.Server do
+defmodule Mafia.Game.LegacyServer do
   @moduledoc """
   마피아 게임 상태 관리 서버
   """

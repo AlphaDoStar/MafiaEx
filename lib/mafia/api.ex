@@ -14,21 +14,14 @@ defmodule Mafia.API do
             Mafia.Messenger.send_text(user_id, message)
             {:ok, :success}
 
-          {:error, :already_exists} ->
-            message = "오류가 발생하였습니다.\n방을 다시 생성해 주세요."
-            Mafia.Messenger.send_text(user_id, message)
-            {:error, :already_exists}
-
           {:error, reason} ->
-            message = "오류가 발생하였습니다.\n원인: #{reason}"
-            Mafia.Messenger.send_text(user_id, message)
-            {:error, reason}
+            send_error_message(user_id, reason)
         end
 
       room_id ->
         room_name =
           room_id
-          |> Mafia.Room.API.get_name()
+          |> Mafia.Room.API.name()
           |> shorten(10)
 
         message = "#{user_name} 님은 이미 #{room_name} 방에 참여 중입니다."
@@ -47,7 +40,7 @@ defmodule Mafia.API do
         {:error, :not_in_room}
 
       room_id ->
-        if Mafia.Room.API.is_host?(room_id, user_id) do
+        if Mafia.Room.API.host?(room_id, user_id) do
           Mafia.Room.API.set_name(room_id, room_name)
 
           room_name = room_name |> shorten(4)
@@ -74,8 +67,8 @@ defmodule Mafia.API do
           Mafia.Room.API.add_member(room_id, user_id, user_name)
           Mafia.User.API.join_room(user_id, room_id)
 
-          room_name = Mafia.Room.API.get_name(room_id)
-          member_count = Mafia.Room.API.get_member_count(room_id)
+          room_name = Mafia.Room.API.name(room_id)
+          member_count = Mafia.Room.API.member_count(room_id)
           message = "#{room_name} 방에 입장했습니다.\n현재 인원: #{member_count}명"
           Mafia.Messenger.send_text(user_id, message)
           {:ok, :success}
@@ -86,7 +79,7 @@ defmodule Mafia.API do
         end
 
       room_id ->
-        room_name = Mafia.Room.API.get_name(room_id)
+        room_name = Mafia.Room.API.name(room_id)
         message = "#{user_name} 님은 이미 #{room_name} 방에 참여 중입니다."
         Mafia.Messenger.send_text(user_id, message)
         {:error, :already_in_room}
@@ -108,6 +101,71 @@ defmodule Mafia.API do
     end
   end
 
+  def toggle_role_status(user_id, role_indices) when is_list(role_indices) do
+    case Mafia.User.API.get_room(user_id) do
+      :not_in_room ->
+        message = "방에 입장하지 않은 상태입니다."
+        Mafia.Messenger.send_text(user_id, message)
+        {:error, :not_in_room}
+
+      room_id ->
+        cond do
+          not Mafia.Room.API.host?(room_id, user_id) ->
+            message = "관리자만 설정할 수 있습니다."
+            Mafia.Messenger.send_text(user_id, message)
+            {:ok, :not_host}
+
+          Mafia.Room.API.game_started?(room_id) ->
+            message = "게임 중에는 설정할 수 없습니다."
+            Mafia.Messenger.send_text(user_id, message)
+            {:error, :game_started}
+
+          not Enum.all?(role_indices, fn index ->
+            is_integer(index) and
+            index >= 1 and
+            index <= length(Mafia.Game.Role.Helper.role_list())
+          end) ->
+            message = "잘못된 입력입니다.\n올바른 번호를 입력해 주세요."
+            Mafia.Messenger.send_text(user_id, message)
+            {:error, :invalid_input}
+
+          true ->
+            :do_any
+        end
+    end
+  end
+
+  def start_game(user_id) do
+    case Mafia.User.API.get_room(user_id) do
+      :not_in_room ->
+        message = "방에 입장하지 않은 상태입니다."
+        Mafia.Messenger.send_text(user_id, message)
+        {:error, :not_in_room}
+
+      room_id ->
+        cond do
+          not Mafia.Room.API.host?(room_id, user_id) ->
+            message = "관리자만 게임을 시작할 수 있습니다."
+            Mafia.Messenger.send_text(user_id, message)
+            {:ok, :not_host}
+
+          Mafia.Room.API.game_started?(room_id) ->
+            message = "이미 게임이 시작되었습니다."
+            Mafia.Messenger.send_text(user_id, message)
+            {:error, :already_started}
+
+          true ->
+            with {:ok, :success} <- Mafia.Game.Supervisor.create_game(room_id),
+                 {:ok, :success} <- Mafia.Game.Supervisor.create_timer(room_id) do
+              begin_game(room_id)
+            else
+              {:error, reason} ->
+                send_error_message(user_id, reason)
+            end
+        end
+    end
+  end
+
   @spec transfer_host(Types.id(), Types.id()) ::
     {:ok, :success | :not_host} | {:error, :not_in_room | :target_not_in_room}
   def transfer_host(user_id, target_id) do
@@ -119,7 +177,7 @@ defmodule Mafia.API do
 
       room_id ->
         cond do
-          !Mafia.Room.API.is_host?(room_id, user_id) ->
+          not Mafia.Room.API.host?(room_id, user_id) ->
             message = "관리자만 위임할 수 있습니다."
             Mafia.Messenger.send_text(user_id, message)
             {:ok, :not_host}
@@ -149,27 +207,27 @@ defmodule Mafia.API do
 
       room_id ->
         cond do
-          Mafia.Room.API.get_member_count(room_id) === 1 ->
+          Mafia.Room.API.member_count(room_id) === 1 ->
             Mafia.User.API.leave_room(user_id)
 
-            room_name = Mafia.Room.API.get_name(room_id)
+            room_name = Mafia.Room.API.name(room_id)
             message = "#{room_name} 방에서 퇴장했습니다."
             Mafia.Messenger.send_text(user_id, message)
             Mafia.Room.API.end_room(room_id)
             {:ok, :success}
 
-          Mafia.Room.API.is_game_started?(room_id) ->
+          Mafia.Room.API.game_started?(room_id) ->
             message = "게임 중에는 퇴장할 수 없습니다."
             Mafia.Messenger.send_text(user_id, message)
             {:ok, :cannot_leave_during_game}
 
-          Mafia.Room.API.is_host?(room_id, user_id) ->
+          Mafia.Room.API.host?(room_id, user_id) ->
             message = "관리자는 퇴장할 수 없습니다.\n다른 사람에게 위임해 주세요."
             Mafia.Messenger.send_text(user_id, message)
             {:ok, :host_cannot_leave}
 
           true ->
-            room_name = Mafia.Room.API.get_name(room_id)
+            room_name = Mafia.Room.API.name(room_id)
             message = "#{room_name} 방에서 퇴장했습니다."
             Mafia.Messenger.send_text(user_id, message)
 
@@ -183,9 +241,41 @@ defmodule Mafia.API do
     end
   end
 
+  defp send_error_message(user_id, reason) do
+    message = "오류가 발생하였습니다.\n원인: #{reason}"
+    Mafia.Messenger.send_text(user_id, message)
+    {:error, reason}
+  end
+
   defp shorten(text, length) when is_binary(text) do
     if String.length(text) > length,
       do: String.trim(String.slice(text, 0, length)) <> "...",
       else: text
+  end
+
+  defp begin_game(game_id) do
+    Mafia.Game.Timer.reset(game_id, 3_000)
+    Mafia.Game.Timer.start(game_id, %{
+      3_000 => fn -> Mafia.Room.API.broadcast_message(game_id, "3") end,
+      2_000 => fn -> Mafia.Room.API.broadcast_message(game_id, "2") end,
+      1_000 => fn -> Mafia.Room.API.broadcast_message(game_id, "1") end,
+      :main => fn ->
+        Mafia.Room.API.broadcast_message(game_id, "게임이 시작되었습니다.")
+        begin_day(game_id)
+      end
+    })
+  end
+
+  defp begin_day(game_id) do
+    # Mafia.Game.API.begin_day(game_id)
+    Mafia.Game.Timer.reset(game_id, 60_000)
+    Mafia.Game.Timer.start(game_id, %{
+      30_000 => fn -> Mafia.Room.API.broadcast_message(game_id, "투표까지 30초 남았습니다.") end,
+      10_000 => fn -> Mafia.Room.API.broadcast_message(game_id, "투표까지 10초 남았습니다.") end,
+      :main => fn ->
+        # Mafia.Game.API.begin_vote(game_id)
+        Mafia.Room.API.broadcast_message(game_id, "투표 시간이 되었습니다.")
+      end
+    })
   end
 end

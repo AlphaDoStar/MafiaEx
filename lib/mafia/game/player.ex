@@ -2,12 +2,13 @@ defmodule Mafia.Game.Player do
   @moduledoc """
   Mafia.Game.Server의 플레이어 구조체
   """
+  alias Mafia.Game.Role
 
   @type id :: String.t()
   @type t :: %__MODULE__{
     id: id(),
     name: String.t(),
-    role: Mafia.Game.Role.t(),
+    role: Role.t(),
     alive: boolean()
   }
 
@@ -19,11 +20,12 @@ defmodule Mafia.Game.Player do
     alive: true
   ]
 
+  @spec new(id(), String.t()) :: t()
   def new(id, name) do
     %__MODULE__{
       id: id,
       name: name,
-      role: Mafia.Game.Role.Unknown.new()
+      role: Role.Unknown.new()
     }
   end
 end

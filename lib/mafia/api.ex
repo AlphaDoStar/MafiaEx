@@ -2,7 +2,7 @@ defmodule Mafia.API do
   alias Mafia.Types
 
   @spec create_room(Types.id(), String.t()) ::
-    {:ok, :success | :already_in_room} | {:error, :already_exists | any()}
+    {:ok, :success | :already_in_room} | {:error, :already_exists | term()}
   def create_room(user_id, user_name) do
     case Mafia.User.API.get_room(user_id) do
       :not_in_room ->
@@ -118,19 +118,23 @@ defmodule Mafia.API do
           Mafia.Room.API.game_started?(room_id) ->
             message = "게임 중에는 설정할 수 없습니다."
             Mafia.Messenger.send_text(user_id, message)
-            {:error, :game_started}
+            {:ok, :game_started}
 
           not Enum.all?(role_indices, fn index ->
             is_integer(index) and
-            index >= 1 and
-            index <= length(Mafia.Game.Role.Helper.role_list())
+            index > 0 and
+            index < length(Mafia.Game.Role.Manager.role_modules())  # except citizen
           end) ->
             message = "잘못된 입력입니다.\n올바른 번호를 입력해 주세요."
             Mafia.Messenger.send_text(user_id, message)
-            {:error, :invalid_input}
+            {:ok, :invalid_input}
 
           true ->
-            :do_any
+            Mafia.Room.API.toggle_active_roles(room_id, role_indices)
+
+            message = "직업 활성화 설정을 갱신했습니다."
+            Mafia.Messenger.send_text(user_id, message)
+            {:ok, :success}
         end
     end
   end

@@ -4,10 +4,14 @@ defmodule Mafia.Game.Server do
 
   @impl true
   @spec init(Mafia.Room.State.t()) :: {:ok, State.t()}
-  def init(%Mafia.Room.State{} = room_state) do
-    id = room_state.id
-    players = room_state.members |> Enum.map(&member_to_player/1)
-    settings = room_state.settings
+  def init(%Mafia.Room.State{} = state) do
+    id = state.id
+    settings = state.settings
+    players =
+      state.members
+      |> Enum.map(&member_to_player/1)
+      |> Map.new()
+
     {:ok, Mafia.Game.State.new(id, players, settings)}
   end
 
@@ -20,49 +24,39 @@ defmodule Mafia.Game.Server do
   @impl true
   def handle_call(:begin_day, _from, %State{} = state) do
     new_state =
-      %State{
-        state |
-        day_count: state.day_count + 1,
-        phase: :day,
-        phase_states: %{
-          state.phase_states |
-          day: %{}
-        }
-      }
+      state
+      |> Map.put(:day_count, state.day_count + 1)
+      |> Map.put(:phase, :day)
+      |> put_in([:phase_states, :day], %{})
 
     {:reply, :ok, new_state}
   end
 
   @impl true
   def handle_call(:begin_discussion, _from, %State{} = state) do
-   new_state =
-      %State{
-        state |
-        phase: :discussion,
-        phase_states: %{
-          state.phase_states |
-          discussion: %{shortened: %{}}
-        }
-      }
+    new_state =
+      state
+      |> Map.put(:phase, :discussion)
+      |> put_in([:phase_states, :discussion], %{adjusted_time: %{}})
 
     {:reply, :ok, new_state}
   end
 
   @impl true
-  def handle_call({:time_adjusted?, id}, _from, state) do
+  def handle_call({:time_adjusted?, id}, _from, %State{} = state) do
     adjusted_time = get_in(state, [:phase_states, :discussion, :adjusted_time, id]) || false
     {:reply, adjusted_time, state}
   end
 
   @impl true
-  def handle_call({:extend_time, id, ms}, _from, state) do
+  def handle_call({:extend_time, id, ms}, _from, %State{} = state) do
     Mafia.Game.Timer.extend(state.id, ms)
     new_state = put_in(state, [:phase_states, :discussion, :adjusted_time, id], true)
     {:reply, :ok, new_state}
   end
 
   @impl true
-  def handle_call({:reduce_time, id, ms}, _from, state) do
+  def handle_call({:reduce_time, id, ms}, _from, %State{} = state) do
     Mafia.Game.Timer.reduce(state.id, ms)
     new_state = put_in(state, [:phase_states, :discussion, :adjusted_time, id], true)
     {:reply, :ok, new_state}
@@ -70,27 +64,46 @@ defmodule Mafia.Game.Server do
 
   @impl true
   def handle_call(:begin_vote, _from, %State{} = state) do
-    new_state =
-      %State{
-        state |
-        phase: :vote,
-        phase_states: %{
-          state.phase_states |
-          vote: %{candidates: %{}, counts: %{}, voted: %{}, result: %{}}
+    candidates =
+      state.players
+      |> Enum.filter(fn {_id, player} -> player.alive end)
+      |> Enum.with_index()
+      |> Enum.map(fn {{id, _player}, index} -> {index, id} end)
+      |> Map.new()
+
+    vote =
+      %{
+        candidates: candidates,
+        counts: %{},
+        voted: %{},
+        result: %{
+          counts: [],
+          tied: false
         }
       }
+
+    new_state =
+      state
+      |> Map.put(:phase, :vote)
+      |> put_in([:phase_states, :vote], vote)
 
     {:reply, :ok, new_state}
   end
 
   @impl true
-  def handle_call({:voted?, id}, _from, state) do
+  def handle_call(:candidates, _from, %State{} = state) do
+    candidates = get_in(state.phase_states.vote.candidates)
+    {:reply, candidates, state}
+  end
+
+  @impl true
+  def handle_call({:voted?, id}, _from, %State{} = state) do
     voted = get_in(state, [:phase_states, :vote, :voted, id]) || false
     {:reply, voted, state}
   end
 
   @impl true
-  def handle_call({:vote, voter_id, index}, _from, state) do
+  def handle_call({:vote, voter_id, index}, _from, %State{} = state) do
     target_id = get_in(state, [:phase_states, :vote, :candidates, index])
     new_state =
       state
@@ -106,14 +119,15 @@ defmodule Mafia.Game.Server do
   end
 
   @impl true
-  def handle_call(:process_vote, _from, state) do
+  def handle_call(:process_vote, _from, %State{} = state) do
     sorted_counts =
       state.phase_states.vote.counts
       |> Enum.sort_by(fn {_id, count} -> count end, :desc)
+      |> Enum.map(fn {id, count} -> {state.players[id], count} end)
 
     tied =
       sorted_counts
-      |> Enum.filter(fn {_id, count} -> count === hd(sorted_counts) |> elem(1) end)
+      |> Enum.filter(fn {_player, count} -> count === hd(sorted_counts) |> elem(1) end)
       |> length() > 1
 
     result = %{counts: sorted_counts, tied: tied}
@@ -123,65 +137,83 @@ defmodule Mafia.Game.Server do
   end
 
   @impl true
-  def handle_call(:begin_defense, _from, state) do
+  def handle_call(:begin_defense, _from, %State{} = state) do
     new_state = put_in(state.phase, :defense)
     {:reply, :ok, new_state}
   end
 
   @impl true
   def handle_call(:begin_judgment, _from, %State{} = state) do
-    new_state =
-      %State{
-        state |
-        phase: :judgment,
-        phase_states: %{
-          state.phase_states |
-          judgment: %{
-            approvals: 0,
-            rejections: 0,
-            judged: %{}
-          }
-        }
+    judgment =
+      %{
+        approval: 0,
+        rejection: 0,
+        judged: %{}
       }
+
+    new_state =
+      state
+      |> Map.put(:phase, :judgment)
+      |> put_in([:phase_states, :judgment], judgment)
 
     {:reply, :ok, new_state}
   end
 
   @impl true
-  def handle_call({:judged?, id}, _from, state) do
+  def handle_call({:judged?, id}, _from, %State{} = state) do
     judged = get_in(state, [:phase_states, :judgment, :judged, id]) || false
     {:reply, judged, state}
   end
 
   @impl true
-  def handle_call({:judge, id, approved}, _from, state) do
+  def handle_call({:judge, id, approved}, _from, %State{} = state) do
     new_state =
       case approved do
-        true -> update_in(state.phase_states.judgment.approvals, &(&1 + 1))
-        false -> update_in(state.phase_states.judgment.rejections, &(&1 + 1))
+        true -> update_in(state.phase_states.judgment.approval, &(&1 + 1))
+        false -> update_in(state.phase_states.judgment.rejection, &(&1 + 1))
       end
       |> put_in([:phase_states, :judgment, :judged, id], true)
 
-    %{approvals: approvals, rejections: rejections} = new_state.phase_states.judgment
-    total_votes = approvals + rejections
+    %{approval: approval, rejection: rejection} = new_state.phase_states.judgment
+    total_votes = approval + rejection
 
     {:reply, total_votes, new_state}
   end
 
   @impl true
-  def handle_call(:process_judgment, _from, _state) do
-    # %{approvals: approvals, rejections: rejections} = state.phase_states.judgment
+  def handle_call(:process_judgment, _from, %State{} = state) do
+    %{approval: approval, rejection: rejection} = state.phase_states.judgment
 
+    {result, new_state} =
+      if approval > rejection do
+        [{target, _} | _] = state.phase_states.vote.result.counts
+        new_state = put_in(state, [:players, target.id, :alive], false)
+        {%{executed: true, target: target}, new_state}
+      else
+        {%{executed: false, target: nil}, state}
+      end
+
+    {:reply, result, new_state}
   end
 
   @impl true
-  def handle_call(:begin_night, _from, state) do
-    {:reply, :ok, state}
+  def handle_call(:begin_night, _from, %State{} = state) do
+    new_state =
+      state
+      |> Map.put(:phase, :night)
+      |> put_in([:phase_states, :night], %{actions: %{}})
+
+    {:reply, :ok, new_state}
   end
 
   @impl true
-  def handle_call({:get_target_list, _id}, _from, _state) do
+  def handle_call({:available_targets, id}, _from, %State{} = state) do
+    available_targets =
+      state
+      |> get_in([:players, id, :role])
+      |> Role.available_targets(:night)
 
+    {:reply, available_targets, state}
   end
 
   @impl true

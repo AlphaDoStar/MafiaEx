@@ -7,12 +7,12 @@ defmodule Mafia.Game.State do
 
   @type id :: String.t()
   @type phase :: :day | :discussion | :vote | :defense | :judgment | :night
-  @type action :: %{priority: pos_integer(), action: atom(), target: id()}
+  @type players :: %{id() => Player.t()}
   @type t :: %__MODULE__{
     id: id(),
     day_count: non_neg_integer(),
     phase: phase(),
-    players: %{id() => Player.t()},
+    players: players(),
     settings: State.settings(),
     phase_states: %{
       day: %{},
@@ -24,18 +24,18 @@ defmodule Mafia.Game.State do
         counts: %{id() => pos_integer()},
         voted: %{id() => boolean()},
         result: %{
-          counts: [{id(), pos_integer()}],
+          counts: [{Player.t(), pos_integer()}],
           tied: boolean()
         }
       },
       defense: %{},
       judgment: %{
-        approvals: non_neg_integer(),
-        rejections: non_neg_integer(),
-        judged: %{id() => boolean()},
+        approval: non_neg_integer(),
+        rejection: non_neg_integer(),
+        judged: %{id() => boolean()}
       },
       night: %{
-        actions: %{atom() => action()}
+        targets: %{module() => id()}
       }
     }
   }
@@ -63,16 +63,17 @@ defmodule Mafia.Game.State do
       },
       defense: %{},
       judgment: %{
-        approvals: 0,
-        rejections: 0,
+        approval: 0,
+        rejection: 0,
         judged: %{}
       },
       night: %{
-        actions: %{}
+        targets: %{}
       }
     }
   ]
 
+  @spec new(id(), players(), State.settings()) :: t()
   def new(id, players, settings) do
     %__MODULE__{id: id, players: players, settings: settings}
   end

@@ -1,6 +1,7 @@
 defmodule Mafia.Room.Server do
   use GenServer
   alias Mafia.Room.State
+  alias Mafia.Game.Role
 
   @impl true
   @spec init(%{id: String.t(), host: {State.id(), String.t()}}) :: {:ok, State.t()}
@@ -72,18 +73,30 @@ defmodule Mafia.Room.Server do
     recipients =
       if is_nil(user.meeting) do
         state.members
-        |> Map.keys()
-        |> Enum.filter(fn member_id -> member_id !== user_id end)
       else
         meeting = Map.get(state.meetings, user.meeting)
         meeting.members
-        |> Map.keys()
-        |> Enum.filter(fn member_id -> member_id !== user_id end)
       end
+      |> Map.keys()
+      |> Enum.reject(&(&1 === user_id))
 
     text = "💬 #{user.name} ⟩  #{message}"
     Mafia.Messenger.send_text_to_many(recipients, text)
     {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:toggle_active_roles, indices}, _from, state) do
+    new_active_roles =
+      state.settings.active_roles
+      |> Enum.reject(fn {role, _active} -> role === Role.Citizen end)
+      |> Enum.with_index()
+      |> Enum.map(fn {{role, active}, index} ->
+        {role, (if index in indices, do: !active, else: active)}
+      end)
+
+    new_state = put_in(state.settings.active_roles, new_active_roles)
+    {:reply, :ok, new_state}
   end
 
   @impl true

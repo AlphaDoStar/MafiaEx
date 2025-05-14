@@ -2,11 +2,20 @@ defmodule Mafia.Room.State do
   @moduledoc """
   Mafia.Room.Server의 상태 구조체
   """
+  alias Mafia.Game.Role
 
   @type id :: String.t()
   @type settings :: %{
     mafia_count: pos_integer() | nil,
     active_roles: %{module() => boolean()}
+  }
+  @type member :: %{
+    name: String.t(),
+    meeting: id() | nil
+  }
+  @type meeting :: %{
+    name: atom(),
+    members: %{id() => muted :: boolean()}
   }
   @type t :: %__MODULE__{
     id: id(),
@@ -14,18 +23,8 @@ defmodule Mafia.Room.State do
     host: id(),
     game_started: boolean(),
     settings: settings(),
-    members: %{
-      id() => %{
-        name: String.t(),
-        meeting: id() | nil
-      }
-    },
-    meetings: %{
-      id() => %{
-        name: String.t(),
-        members: %{id() => boolean()}  # mute
-      }
-    }
+    members: %{id() => member()},
+    meetings: %{id() => member()}
   }
 
   @enforce_keys [:id, :name, :host, :members]
@@ -37,11 +36,12 @@ defmodule Mafia.Room.State do
     game_started: false,
     settings: %{
       mafia_count: nil,
-      active_roles: Mafia.Game.Role.Manager.default_active_roles()
+      active_roles: Role.Manager.default_active_roles()
     },
     meetings: %{}
   ]
 
+  @spec new(id(), {id(), String.t()}) :: t()
   def new(id, {host_id, host_name}) do
     %__MODULE__{
       id: id,

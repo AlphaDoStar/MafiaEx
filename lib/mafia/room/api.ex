@@ -1,11 +1,10 @@
 defmodule Mafia.Room.API do
   alias Mafia.Room.State
 
-  @spec start_link([{:host, {State.id(), String.t()}}, {:id, State.id()}]) ::
+  @spec start_link([{:id, State.id()}, {:host, {State.id(), String.t()}}]) ::
     GenServer.on_start()
   def start_link(args) do
-    [host: host, id: id] = args
-    GenServer.start_link(Mafia.Room.Server, host, name: via_tuple(id))
+    GenServer.start_link(Mafia.Room.Server, Map.new(args), name: via_tuple(args[:id]))
   end
 
   @spec host?(State.id(), State.id()) :: boolean()
@@ -56,6 +55,11 @@ defmodule Mafia.Room.API do
   @spec broadcast_member_message(State.id(), State.id(), String.t()) :: :ok
   def broadcast_member_message(room_id, user_id, message) do
     GenServer.call(via_tuple(room_id), {:broadcast_member_message, user_id, message})
+  end
+
+  @spec toggle_active_roles(State.id(), [pos_integer()]) :: :ok
+  def toggle_active_roles(room_id, indices) do
+    GenServer.call(via_tuple(room_id), {:toggle_active_roles, indices})
   end
 
   @spec create_meeting(State.id(), String.t(), %{State.id() => boolean()}) :: State.id()

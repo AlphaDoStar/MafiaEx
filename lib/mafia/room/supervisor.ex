@@ -14,7 +14,7 @@ defmodule Mafia.Room.Supervisor do
     room_id = UUID.uuid4()
     spec = %{
       id: :undefined,
-      start: {Mafia.Room.API, :start_link, [[host: {user_id, user_name}, id: room_id]]},
+      start: {Mafia.Room.API, :start_link, [[id: room_id, host: {user_id, user_name}]]},
       restart: :transient
     }
 

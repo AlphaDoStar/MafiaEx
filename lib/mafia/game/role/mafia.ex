@@ -16,8 +16,7 @@ defmodule Mafia.Game.Role.Mafia do
 end
 
 defimpl Mafia.Game.Role, for: Mafia.Game.Role.Mafia do
-  alias Mafia.Game.Role
-  alias Mafia.Game.State
+  alias Mafia.Game.{Role, State}
 
   @impl true
   @spec atom(Role.Mafia.t()) :: atom()
@@ -57,16 +56,42 @@ defimpl Mafia.Game.Role, for: Mafia.Game.Role.Mafia do
 
   @impl true
   @spec register_ability(Role.Mafia.t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
-  def register_ability(_, :night, _target_id, state) do
-    {"", state}
+  def register_ability(role, :night, target_id, state) do
+    new_state = put_in(state, [:phase_states, :night, :targets, role.__struct__], target_id)
+    target = get_in(state, [:players, target_id])
+    message =
+      """
+      #{target.name} 님을
+      암살 대상으로 지정하였습니다.
+      """
+      |> String.trim_trailing()
+
+    {message, new_state}
   end
   def register_ability(_, _, _, state), do: {"사용할 수 있는 능력이 없습니다.", state}
 
   @impl true
-  @spec resolve_ability(Role.Mafia.t(), State.phase(), State.t()) :: State.t()
-  def resolve_ability(_, _, state), do: state
+  @spec resolve_ability(Role.Mafia.t(), State.phase(), State.id(), State.t()) :: State.t()
+  def resolve_ability(_, :night, target_id, state) do
+    {message, new_state} =
+      state
+      |> get_in([:players, target_id, :role])
+      |> Role.kill_player(:night, target_id, state)
+
+    put_in(new_state, [:phase_states, :night, :result, :message], message)
+  end
+  def resolve_ability(_, _, _, state), do: state
+
+  @impl true
+  @spec kill_player(Role.Mafia.t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
+  def kill_player(_, _, player_id, state) do
+    new_state = put_in(state, [:players, player_id, :alive], false)
+    player = get_in(state, [:players, player_id])
+    message = "#{player.name} 님이 사망했습니다."
+    {message, new_state}
+  end
 
   defp not_mafia_and_alive?({_id, player}) do
-    Mafia.Game.Role.atom(player.role) !== :mafia and player.alive
+    Role.atom(player.role) !== :mafia and player.alive
   end
 end

@@ -40,7 +40,7 @@ defmodule Mafia.Room.Server do
   @impl true
   def handle_call({:transfer_host, id}, _from, state) do
     new_state = Map.put(state, :host, id)
-    host_name = new_state.members[id].name
+    host_name = get_in(new_state, [:members, id, :name])
     {:reply, host_name, new_state}
   end
 
@@ -51,10 +51,11 @@ defmodule Mafia.Room.Server do
 
   @impl true
   def handle_call({:remove_member, id}, _from, state) do
-    member = state.members[id]
-    new_state = state
+    member = get_in(state, [:members, id])
+    new_state =
+      state
       |> update_in([:members], &Map.delete(&1, id))
-      |> update_in([:meetings], &Map.delete(&1, member.meeting))
+      |> update_in([:meetings, member.meeting], &List.delete(&1, id))
 
     {:reply, member.name, new_state}
   end
@@ -69,16 +70,11 @@ defmodule Mafia.Room.Server do
 
   @impl true
   def handle_call({:broadcast_member_message, user_id, message}, _from, state) do
-    user = state.members[user_id]
-    recipients =
-      if is_nil(user.meeting) do
-        state.members
-      else
-        meeting = Map.get(state.meetings, user.meeting)
-        meeting.members
-      end
-      |> Map.keys()
-      |> Enum.reject(&(&1 === user_id))
+    user = get_in(state, [:members, user_id])
+
+    lobby_members = lobby_members(state, user_id)
+    meeting_members = meeting_members(state, user_id, user.meeting)
+    recipients = lobby_members ++ meeting_members
 
     text = "💬 #{user.name} ⟩  #{message}"
     Mafia.Messenger.send_text_to_many(recipients, text)
@@ -100,22 +96,63 @@ defmodule Mafia.Room.Server do
   end
 
   @impl true
-  @spec handle_call({:create_meeting, String.t(), %{Types.id() => boolean()}}, GenServer.from(), Types.room_state()) ::
-    {:reply, Types.id(), Types.room_state()}
-  def handle_call({:create_meeting, name, members}, _from, state) do
-    uuid = UUID.uuid4()
-    new_state = Map.put(state, uuid, %{name: name, members: members})
-    {:reply, uuid, new_state}  # 수정 필요
+  def handle_call(:state, _from, state) do
+    {:reply, state, state}
   end
 
   @impl true
-  def handle_call(:end_meeting, _from, state) do
-    new_state = Map.put(state, :meetings, %{})
+  def handle_call({:create_meeting, name, ids}, _from, state) do
+    id_set = MapSet.new(ids)
+    new_state =
+      state
+      |> put_in([:meetings, name], ids)
+      |> Map.update!(:members, fn members ->
+        Enum.map(members, fn {id, member} ->
+          new_member =
+            if MapSet.member?(id_set, id) do
+              %{member | meeting: name}
+            else
+              member
+            end
+
+          {id, new_member}
+        end)
+      end)
+
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call(:end_meetings, _from, state) do
+    new_state =
+      state
+      |> Map.put(:meetings, %{})
+      |> Map.update!(:members, fn members ->
+        Enum.map(members, fn {id, member} -> {id, %{member | meeting: nil}} end)
+      end)
+
     {:reply, :ok, new_state}
   end
 
   @impl true
   def handle_call(:end_room, _from, state) do
     {:stop, :normal, :ok, state}
+  end
+
+  defp lobby_members(state, user_id) do
+    state.members
+    |> Enum.filter(fn {id, member} ->
+      id !== user_id and is_nil(member.meeting)
+    end)
+    |> Enum.map(fn {id, _} -> id end)
+  end
+
+  defp meeting_members(_, _, nil), do: []
+  defp meeting_members(state, user_id, meeting) do
+    state.members
+    |> Enum.filter(fn {id, member} ->
+      id !== user_id and member.meeting === meeting
+    end)
+    |> Enum.map(fn {id, _} -> id end)
   end
 end

@@ -21,15 +21,18 @@ defprotocol Mafia.Game.Role do
   @spec display_name(t()) :: String.t()
   def display_name(role)
 
-  @spec begin_phase(t(), State.phase(), State.id(), State.t()) :: State.t()
+  @spec begin_phase(t(), State.phase(), Player.id(), State.t()) :: State.t()
   def begin_phase(role, phase, player_id, state)
 
   @spec available_targets(t(), State.phase()) :: %{pos_integer() => Player.t()}
   def available_targets(role, phase)
 
-  @spec register_ability(t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
+  @spec register_ability(t(), State.phase(), Player.id(), State.t()) :: {String.t(), State.t()}
   def register_ability(role, phase, target_id, state)
 
-  @spec resolve_ability(t(), State.phase(), State.t()) :: State.t()
-  def resolve_ability(role, phase, state)
+  @spec resolve_ability(t(), State.phase(), Player.id(), State.t()) :: State.t()
+  def resolve_ability(role, phase, target_id, state)
+
+  @spec kill_player(t(), State.phase(), Player.id(), State.t()) :: {String.t(), State.t()}
+  def kill_player(role, phase, player_id, state)
 end

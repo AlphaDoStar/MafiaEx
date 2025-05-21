@@ -16,8 +16,7 @@ defmodule Mafia.Game.Role.Police do
 end
 
 defimpl Mafia.Game.Role, for: Mafia.Game.Role.Police do
-  alias Mafia.Game.Role
-  alias Mafia.Game.State
+  alias Mafia.Game.{Role, State}
 
   @impl true
   @spec atom(Role.Police.t()) :: atom()
@@ -57,16 +56,40 @@ defimpl Mafia.Game.Role, for: Mafia.Game.Role.Police do
 
   @impl true
   @spec register_ability(Role.Police.t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
-  def register_ability(_, :night, _target_id, state) do
-    {"", state}
+  def register_ability(role, :night, target_id, state) do
+    keys = [:phase_states, :night, :targets, role.__struct__]
+    case get_in(state, keys) do
+      nil ->
+        new_state = put_in(state, keys, target_id)
+        target = get_in(state, [:players, target_id])
+        message =
+          if Role.team(target.role) === :mafia do
+            "#{target.name} 님은 마피아입니다."
+          else
+            "#{target.name} 님은 마피아가 아닙니다."
+          end
+
+        {message, new_state}
+
+      _ -> {"이미 능력을 사용했습니다.", state}
+    end
   end
   def register_ability(_, _, _, state), do: {"사용할 수 있는 능력이 없습니다.", state}
 
   @impl true
-  @spec resolve_ability(Role.Police.t(), State.phase(), State.t()) :: State.t()
-  def resolve_ability(_, _, state), do: state
+  @spec resolve_ability(Role.Police.t(), State.phase(), State.id(), State.t()) :: State.t()
+  def resolve_ability(_, _, _, state), do: state
+
+  @impl true
+  @spec kill_player(Role.Police.t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
+  def kill_player(_, _, player_id, state) do
+    new_state = put_in(state, [:players, player_id, :alive], false)
+    player = get_in(state, [:players, player_id])
+    message = "#{player.name} 님이 사망했습니다."
+    {message, new_state}
+  end
 
   defp not_police_and_alive?({_id, player}) do
-    Mafia.Game.Role.atom(player.role) === :police and player.alive
+    Role.atom(player.role) === :police and player.alive
   end
 end

@@ -16,8 +16,7 @@ defmodule Mafia.Game.Role.Citizen do
 end
 
 defimpl Mafia.Game.Role, for: Mafia.Game.Role.Citizen do
-  alias Mafia.Game.Role
-  alias Mafia.Game.State
+  alias Mafia.Game.{Role, State}
 
   @impl true
   @spec atom(Role.Citizen.t()) :: atom()
@@ -48,6 +47,15 @@ defimpl Mafia.Game.Role, for: Mafia.Game.Role.Citizen do
   def register_ability(_, _, _, state), do: {"사용할 수 있는 능력이 없습니다.", state}
 
   @impl true
-  @spec resolve_ability(Role.Citizen.t(), State.phase(), State.t()) :: State.t()
-  def resolve_ability(_, _, state), do: state
+  @spec resolve_ability(Role.Citizen.t(), State.phase(), State.id(), State.t()) :: State.t()
+  def resolve_ability(_, _, _, state), do: state
+
+  @impl true
+  @spec kill_player(Role.Unknown.t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
+  def kill_player(_, _, player_id, state) do
+    new_state = put_in(state, [:players, player_id, :alive], false)
+    player = get_in(state, [:players, player_id])
+    message = "#{player.name} 님이 사망했습니다."
+    {message, new_state}
+  end
 end

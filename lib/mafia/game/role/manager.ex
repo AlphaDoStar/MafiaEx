@@ -5,8 +5,10 @@ defmodule Mafia.Game.Role.Manager do
   alias Mafia.Game.Role
 
   @role_modules [
-    Role.Mafia,
+    Role.Citizen,
     Role.Doctor,
+    Role.Lover,
+    Role.Mafia,
     Role.Police
   ]
 
@@ -14,8 +16,9 @@ defmodule Mafia.Game.Role.Manager do
     |> Enum.map(&apply(&1, :new, []))
 
   @default_active_roles %{
-    Role.Mafia => true,
     Role.Doctor => true,
+    Role.Lover => false,
+    Role.Mafia => true,
     Role.Police => true
   }
 

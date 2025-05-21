@@ -47,6 +47,7 @@ defmodule Mafia.Room.API do
     GenServer.call(via_tuple(room_id), {:remove_member, user_id})
   end
 
+  @spec broadcast_message(State.id(), String.t()) :: :ok
   @spec broadcast_message(State.id(), String.t(), boolean()) :: :ok
   def broadcast_message(room_id, message, prefix \\ true) do
     GenServer.call(via_tuple(room_id), {:broadcast_message, message, prefix})
@@ -62,14 +63,19 @@ defmodule Mafia.Room.API do
     GenServer.call(via_tuple(room_id), {:toggle_active_roles, indices})
   end
 
-  @spec create_meeting(State.id(), String.t(), %{State.id() => boolean()}) :: State.id()
+  @spec state(State.id()) :: State.t()
+  def state(room_id) do
+    GenServer.call(via_tuple(room_id), :state)
+  end
+
+  @spec create_meeting(State.id(), atom(), [State.id()]) :: State.id()
   def create_meeting(room_id, meeting_name, members) do
     GenServer.call(via_tuple(room_id), {:create_meeting, meeting_name, members})
   end
 
-  @spec end_meeting(State.id()) :: :ok
-  def end_meeting(room_id) do
-    GenServer.call(via_tuple(room_id), :end_meeting)
+  @spec end_meetings(State.id()) :: :ok
+  def end_meetings(room_id) do
+    GenServer.call(via_tuple(room_id), :end_meetings)
   end
 
   @spec end_room(State.id()) :: :ok

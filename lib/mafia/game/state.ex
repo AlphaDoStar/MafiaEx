@@ -35,7 +35,10 @@ defmodule Mafia.Game.State do
         judged: %{id() => boolean()}
       },
       night: %{
-        targets: %{module() => id()}
+        targets: %{module() => id()},
+        result: %{
+          message: String.t()
+        }
       }
     }
   }
@@ -68,7 +71,10 @@ defmodule Mafia.Game.State do
         judged: %{}
       },
       night: %{
-        targets: %{}
+        targets: %{},
+        result: %{
+          message: ""
+        }
       }
     }
   ]

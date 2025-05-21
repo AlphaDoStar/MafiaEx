@@ -16,8 +16,7 @@ defmodule Mafia.Game.Role.Doctor do
 end
 
 defimpl Mafia.Game.Role, for: Mafia.Game.Role.Doctor do
-  alias Mafia.Game.Role
-  alias Mafia.Game.State
+  alias Mafia.Game.{Role, State}
 
   @impl true
   @spec atom(Role.Doctor.t()) :: atom()
@@ -57,20 +56,47 @@ defimpl Mafia.Game.Role, for: Mafia.Game.Role.Doctor do
 
   @impl true
   @spec register_ability(Role.Doctor.t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
-  def register_ability(_, :night, _target_id, state) do
-    # new_pending_actions =
-    #   state
-    #   |> Map.put(role.name, %{
-    #     priority: 2,
-    #     action: :heal,
-    #     target: target_id
-    #   })
+  def register_ability(role, :night, target_id, state) do
+    new_state = put_in(state, [:phase_states, :night, :targets, role.__struct__], target_id)
+    target = get_in(state, [:players, target_id])
+    message =
+      """
+      #{target.name} 님을
+      치료 대상으로 지정하였습니다."
+      """
+      |> String.trim_trailing()
 
-    {"", state}
+    {message, new_state}
   end
-  def register_ability(_, _, _, _, state), do: {"사용할 수 있는 능력이 없습니다.", state}
+  def register_ability(_, _, _, state), do: {"사용할 수 있는 능력이 없습니다.", state}
 
   @impl true
-  @spec resolve_ability(Role.Doctor.t(), State.phase(), State.t()) :: State.t()
-  def resolve_ability(_, _, state), do: state
+  @spec resolve_ability(Role.Doctor.t(), State.phase(), State.id(), State.t()) :: State.t()
+  def resolve_ability(_, :night, target_id, state) do
+    target = get_in(state, [:players, target_id])
+    if target.alive do
+      state
+    else
+      message =
+        """
+        #{target.name} 님이
+        #의사의 치료로 살아났습니다.
+        """
+        |> String.trim_trailing()
+
+      state
+      |> put_in([:players, target_id, :alive], true)
+      |> put_in([:phase_states, :night, :result, :message], message)
+    end
+  end
+  def resolve_ability(_, _, _, state), do: state
+
+  @impl true
+  @spec kill_player(Role.Doctor.t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
+  def kill_player(_, _, player_id, state) do
+    new_state = put_in(state, [:players, player_id, :alive], false)
+    player = get_in(state, [:players, player_id])
+    message = "#{player.name} 님이 사망했습니다."
+    {message, new_state}
+  end
 end

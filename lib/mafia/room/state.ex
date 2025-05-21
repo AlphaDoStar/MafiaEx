@@ -11,11 +11,7 @@ defmodule Mafia.Room.State do
   }
   @type member :: %{
     name: String.t(),
-    meeting: id() | nil
-  }
-  @type meeting :: %{
-    name: atom(),
-    members: %{id() => muted :: boolean()}
+    meeting: atom()
   }
   @type t :: %__MODULE__{
     id: id(),
@@ -24,7 +20,7 @@ defmodule Mafia.Room.State do
     game_started: boolean(),
     settings: settings(),
     members: %{id() => member()},
-    meetings: %{id() => member()}
+    meetings: %{atom() => [id()]}
   }
 
   @enforce_keys [:id, :name, :host, :members]

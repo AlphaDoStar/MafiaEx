@@ -16,8 +16,7 @@ defmodule Mafia.Game.Role.Unknown do
 end
 
 defimpl Mafia.Game.Role, for: Mafia.Game.Role.Unknown do
-  alias Mafia.Game.Role
-  alias Mafia.Game.State
+  alias Mafia.Game.{Role, State}
 
   @impl true
   @spec atom(Role.Unknown.t()) :: atom()
@@ -33,7 +32,7 @@ defimpl Mafia.Game.Role, for: Mafia.Game.Role.Unknown do
 
   @impl true
   @spec display_name(Role.Unknown.t()) :: String.t()
-  def display_name(_), do: "알 수 없음"
+  def display_name(_), do: ""
 
   @impl true
   @spec begin_phase(Role.Unknown.t(), State.phase(), State.id(), State.t()) :: State.t()
@@ -45,9 +44,13 @@ defimpl Mafia.Game.Role, for: Mafia.Game.Role.Unknown do
 
   @impl true
   @spec register_ability(Role.Unknown.t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
-  def register_ability(_, _, _, state), do: {"알 수 없음", state}
+  def register_ability(_, _, _, state), do: {"", state}
 
   @impl true
-  @spec resolve_ability(Role.Unknown.t(), State.phase(), State.t()) :: State.t()
-  def resolve_ability(_, _, state), do: state
+  @spec resolve_ability(Role.Unknown.t(), State.phase(), State.id(), State.t()) :: State.t()
+  def resolve_ability(_, _, _, state), do: state
+
+  @impl true
+  @spec kill_player(Role.Unknown.t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
+  def kill_player(_, _, _, state), do: {"", state}
 end

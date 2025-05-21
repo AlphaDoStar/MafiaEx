@@ -13,7 +13,7 @@ defmodule Mafia.Game.Supervisor do
   def create_game(room_id) do
     spec = %{
       id: :undefined,
-      start: {Mafia.Game.API, :start_link, []},
+      start: {Mafia.Game.API, :start_link, [Mafia.Room.API.state(room_id)]},
       restart: :transient
     }
 

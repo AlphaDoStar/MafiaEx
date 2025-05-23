@@ -19,7 +19,7 @@ defmodule Mafia.GameTest do
     Mafia.API.broadcast_user_message("A", "다들 어서와")
     Mafia.API.broadcast_user_message("B", "안녕~~~")
 
-    # assert Mafia.API.toggle_role_status("A", [2]) === {:ok, :success}
+    assert Mafia.API.toggle_role_status("A", [3]) === {:ok, :success}
     assert Mafia.API.create_game("A") === {:ok, :success}
 
     receive do

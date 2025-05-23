@@ -437,7 +437,10 @@ defmodule Mafia.API do
   defp role_module({_id, %{role: role}}), do: role.__struct__
 
   defp game_over(game_id, win) do
-    team_name = Game.Role.display_name(win)
+    team_name =
+      Game.Role.Manager.role_struct_by_atom(win)
+      |> Game.Role.display_name()
+
     message =
       """
       게임이 종료되었습니다.

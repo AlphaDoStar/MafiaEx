@@ -37,6 +37,13 @@ defmodule Mafia.Game.Role.Manager do
     if module, do: module.__struct__, else: Role.Unknown
   end
 
+  @spec role_struct_by_atom(atom()) :: struct()
+  def role_struct_by_atom(atom) do
+    Enum.find(@role_structs, Role.Unknown.new(), fn struct ->
+      Role.atom(struct) === atom
+    end)
+  end
+
   @spec default_active_roles() :: %{module() => boolean()}
   def default_active_roles, do: @default_active_roles
 end

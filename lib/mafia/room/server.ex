@@ -1,6 +1,5 @@
 defmodule Mafia.Room.Server do
   use GenServer
-  alias Mafia.Game.Role
 
   @impl true
   def init(%{id: id, host: {host_id, host_name}}) do
@@ -83,14 +82,13 @@ defmodule Mafia.Room.Server do
   def handle_call({:toggle_active_roles, indices}, _from, state) do
     new_active_roles =
       state.settings.active_roles
-      |> Enum.with_index()
-      |> Enum.reject(fn {{module, _active}, _index} -> module === Role.Citizen end)
+      |> Enum.with_index(1)
       |> Enum.map(fn {{module, active}, index} ->
         {module, (if index in indices, do: !active, else: active)}
       end)
       |> Map.new()
 
-    new_state = put_in(state.settings.active_roles, new_active_roles)
+    new_state = put_in(state, [:settings, :active_roles], new_active_roles)
     {:reply, :ok, new_state}
   end
 

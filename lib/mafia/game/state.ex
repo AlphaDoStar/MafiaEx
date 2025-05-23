@@ -73,11 +73,22 @@ defmodule Mafia.Game.State do
       night: %{
         targets: %{},
         result: %{
-          message: ""
+          message: nil
         }
       }
     }
   ]
+
+  @behaviour Access
+
+  @impl true
+  def fetch(struct, key), do:  Map.fetch(struct, key)
+
+  @impl true
+  def get_and_update(struct, key, fun), do: Map.get_and_update(struct, key, fun)
+
+  @impl true
+  def pop(struct, key), do: Map.pop(struct, key)
 
   @spec new(id(), players(), State.settings()) :: t()
   def new(id, players, settings) do

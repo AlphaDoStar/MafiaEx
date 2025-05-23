@@ -31,12 +31,12 @@ defmodule Mafia.Room.Supervisor do
     end
   end
 
-  def get_all_room_ids do
+  def all_room_ids do
     Registry.select(Mafia.Room.Registry, [{{:"$1", :"$2", :"$3"}, [], [:"$1"]}])
   end
 
-  def get_all_room_names do
-    get_all_room_ids()
+  def all_room_names do
+    all_room_ids()
     |> Enum.map(&Mafia.Room.API.name/1)
   end
 end

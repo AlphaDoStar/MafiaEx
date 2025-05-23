@@ -9,6 +9,10 @@ defmodule Mafia.Game.API do
     GenServer.call(via_tuple(game_id), :begin_game)
   end
 
+  def phase(game_id) do
+    GenServer.call(via_tuple(game_id), :phase)
+  end
+
   def players(game_id) do
     GenServer.call(via_tuple(game_id), :players)
   end

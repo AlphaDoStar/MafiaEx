@@ -1,8 +1,6 @@
 defmodule Mafia.Room.API do
   alias Mafia.Room.State
 
-  @spec start_link([{:id, State.id()}, {:host, {State.id(), String.t()}}]) ::
-    GenServer.on_start()
   def start_link(args) do
     GenServer.start_link(Mafia.Room.Server, Map.new(args), name: via_tuple(args[:id]))
   end

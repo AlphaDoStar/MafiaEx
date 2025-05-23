@@ -1,10 +1,8 @@
 defmodule Mafia.Room.Server do
   use GenServer
-  alias Mafia.Room.State
   alias Mafia.Game.Role
 
   @impl true
-  @spec init(%{id: String.t(), host: {State.id(), String.t()}}) :: {:ok, State.t()}
   def init(%{id: id, host: {host_id, host_name}}) do
     {:ok, Mafia.Room.State.new(id, {host_id, host_name})}
   end
@@ -85,11 +83,12 @@ defmodule Mafia.Room.Server do
   def handle_call({:toggle_active_roles, indices}, _from, state) do
     new_active_roles =
       state.settings.active_roles
-      |> Enum.reject(fn {role, _active} -> role === Role.Citizen end)
       |> Enum.with_index()
-      |> Enum.map(fn {{role, active}, index} ->
-        {role, (if index in indices, do: !active, else: active)}
+      |> Enum.reject(fn {{module, _active}, _index} -> module === Role.Citizen end)
+      |> Enum.map(fn {{module, active}, index} ->
+        {module, (if index in indices, do: !active, else: active)}
       end)
+      |> Map.new()
 
     new_state = put_in(state.settings.active_roles, new_active_roles)
     {:reply, :ok, new_state}
@@ -117,6 +116,7 @@ defmodule Mafia.Room.Server do
 
           {id, new_member}
         end)
+        |> Map.new()
       end)
 
     {:reply, :ok, new_state}
@@ -128,7 +128,9 @@ defmodule Mafia.Room.Server do
       state
       |> Map.put(:meetings, %{})
       |> Map.update!(:members, fn members ->
-        Enum.map(members, fn {id, member} -> {id, %{member | meeting: nil}} end)
+        members
+        |> Enum.map(fn {id, member} -> {id, %{member | meeting: nil}} end)
+        |> Map.new()
       end)
 
     {:reply, :ok, new_state}

@@ -7,6 +7,17 @@ defmodule Mafia.Game.Role.Citizen do
 
   defstruct [:targets]
 
+  @behaviour Access
+
+  @impl true
+  def fetch(struct, key), do:  Map.fetch(struct, key)
+
+  @impl true
+  def get_and_update(struct, key, fun), do: Map.get_and_update(struct, key, fun)
+
+  @impl true
+  def pop(struct, key), do: Map.pop(struct, key)
+
   @spec new() :: t()
   def new do
     %__MODULE__{

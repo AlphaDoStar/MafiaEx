@@ -37,6 +37,17 @@ defmodule Mafia.Room.State do
     meetings: %{}
   ]
 
+  @behaviour Access
+
+  @impl true
+  def fetch(struct, key), do:  Map.fetch(struct, key)
+
+  @impl true
+  def get_and_update(struct, key, fun), do: Map.get_and_update(struct, key, fun)
+
+  @impl true
+  def pop(struct, key), do: Map.pop(struct, key)
+
   @spec new(id(), {id(), String.t()}) :: t()
   def new(id, {host_id, host_name}) do
     %__MODULE__{

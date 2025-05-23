@@ -7,19 +7,19 @@ defmodule Mafia.Game.Timer do
   end
 
   def reset(game_id, new_duration) do
-    GenServer.call(via_tuple(game_id), {:reset, new_duration})
+    GenServer.cast(via_tuple(game_id), {:reset, new_duration})
   end
 
   def start(game_id, callbacks) do
-    GenServer.call(via_tuple(game_id), {:start, callbacks})
+    GenServer.cast(via_tuple(game_id), {:start, callbacks})
   end
 
   def extend(game_id, ms) do
-    GenServer.call(via_tuple(game_id), {:extend, ms})
+    GenServer.cast(via_tuple(game_id), {:extend, ms})
   end
 
   def reduce(game_id, ms) do
-    GenServer.call(via_tuple(game_id), {:reduce, ms})
+    GenServer.cast(via_tuple(game_id), {:reduce, ms})
   end
 
   def remaining(game_id) do
@@ -36,19 +36,19 @@ defmodule Mafia.Game.Timer do
   end
 
   @impl true
-  def handle_call({:reset, new_duration}, _from, state) do
+  def handle_cast({:reset, new_duration}, state) do
     cancel_all_timers(state.timer_refs)
-    {:reply, :ok, initial_state(new_duration)}
+    {:noreply, initial_state(new_duration)}
   end
 
   @impl true
-  def handle_call({:start, callbacks}, _from, state) do
+  def handle_cast({:start, callbacks}, state) do
     new_state = state |> start_timer(callbacks)
-    {:reply, :ok, new_state}
+    {:noreply, new_state}
   end
 
   @impl true
-  def handle_call({:extend, ms}, _from, state) when ms > 0 do
+  def handle_cast({:extend, ms}, state) when ms > 0 do
     new_state = case state.status do
       :running ->
         cancel_all_timers(state.timer_refs)
@@ -57,17 +57,16 @@ defmodule Mafia.Game.Timer do
         %{state | duration: remaining} |> start_timer(state.callbacks)
 
       _ ->
-        IO.puts("log")
         %{state | duration: state.duration + ms}
     end
-    {:reply, :ok, new_state}
+    {:noreply, new_state}
   end
-  def handle_call({:extend, _ms}, _from, state) do
-    {:reply, {:error, :invalid_duration}, state}
+  def handle_cast({:extend, _ms}, state) do
+    {:noreply, state}
   end
 
   @impl true
-  def handle_call({:reduce, ms}, _from, state) when ms > 0 do
+  def handle_cast({:reduce, ms}, state) when ms > 0 do
     new_state = case state.status do
       :running ->
         cancel_all_timers(state.timer_refs)
@@ -78,10 +77,10 @@ defmodule Mafia.Game.Timer do
       _ ->
         %{state | duration: max(0, state.duration - ms)}
     end
-    {:reply, :ok, new_state}
+    {:noreply, new_state}
   end
-  def handle_call({:reduce, _ms}, _from, state) do
-    {:reply, {:error, :invalid_duration}, state}
+  def handle_cast({:reduce, _ms}, state) do
+    {:noreply, state}
   end
 
   @impl true

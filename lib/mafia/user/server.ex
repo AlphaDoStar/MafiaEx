@@ -1,11 +1,8 @@
-defmodule Mafia.User.State do
+defmodule Mafia.User.Server do
   use GenServer
 
   @impl true
-  @spec init(:ok) :: {:ok, map()}
-  def init(:ok) do
-    {:ok, %{}}
-  end
+  def init(:ok), do: {:ok, %{}}
 
   @impl true
   def handle_call({:join_room, user_id, room_id}, _from, state) do
@@ -20,8 +17,8 @@ defmodule Mafia.User.State do
   end
 
   @impl true
-  def handle_call({:get_room, user_id}, _from, state) do
-    room_id = Map.get(state, user_id, :not_in_room)
+  def handle_call({:room_id, user_id}, _from, state) do
+    room_id = Map.get(state, user_id)
     {:reply, room_id, state}
   end
 end

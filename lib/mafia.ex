@@ -12,9 +12,13 @@ defmodule Mafia do
 
     children = [
       {Registry, keys: :unique, name: Mafia.Room.Registry},
-      Mafia.User.API,
+      {Registry, keys: :unique, name: Mafia.Game.Registry},
+      {Registry, keys: :unique, name: Mafia.Game.Timer.Registry},
+
       Mafia.Room.Supervisor,
-      # Mafia.Game.Supervisor
+      Mafia.Game.Supervisor,
+
+      Mafia.User.API
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

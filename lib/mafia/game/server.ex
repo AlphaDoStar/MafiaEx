@@ -3,7 +3,6 @@ defmodule Mafia.Game.Server do
   alias Mafia.Game.{State, Role}
 
   @impl true
-  @spec init(Mafia.Room.State.t()) :: {:ok, State.t()}
   def init(%Mafia.Room.State{} = state) do
     id = state.id
     settings = state.settings
@@ -22,6 +21,11 @@ defmodule Mafia.Game.Server do
   end
 
   @impl true
+  def handle_call(:phase, _from, %State{} = state) do
+    {:reply, state.phase, state}
+  end
+
+  @impl true
   def handle_call(:players, _from, %State{} = state) do
     {:reply, state.players, state}
   end
@@ -33,6 +37,7 @@ defmodule Mafia.Game.Server do
       |> Map.put(:day_count, state.day_count + 1)
       |> Map.put(:phase, :day)
       |> put_in([:phase_states, :day], %{})
+      |> apply_begin_phase(:day)
 
     {:reply, :ok, new_state}
   end
@@ -53,6 +58,7 @@ defmodule Mafia.Game.Server do
       state
       |> Map.put(:phase, :discussion)
       |> put_in([:phase_states, :discussion], %{adjusted_time: %{}})
+      |> apply_begin_phase(:discussion)
 
     {:reply, :ok, new_state}
   end
@@ -101,6 +107,7 @@ defmodule Mafia.Game.Server do
       state
       |> Map.put(:phase, :vote)
       |> put_in([:phase_states, :vote], vote)
+      |> apply_begin_phase(:vote)
 
     {:reply, :ok, new_state}
   end
@@ -180,7 +187,11 @@ defmodule Mafia.Game.Server do
 
   @impl true
   def handle_call(:begin_defense, _from, %State{} = state) do
-    new_state = put_in(state.phase, :defense)
+    new_state =
+      state
+      |> Map.put(:phase, :defense)
+      |> apply_begin_phase(:defense)
+
     {:reply, :ok, new_state}
   end
 
@@ -197,6 +208,7 @@ defmodule Mafia.Game.Server do
       state
       |> Map.put(:phase, :judgment)
       |> put_in([:phase_states, :judgment], judgment)
+      |> apply_begin_phase(:judgment)
 
     {:reply, :ok, new_state}
   end
@@ -216,18 +228,16 @@ defmodule Mafia.Game.Server do
       end
       |> put_in([:phase_states, :judgment, :judged, id], true)
 
-    %{approval: approval, rejection: rejection} = new_state.phase_states.judgment
-    total_votes = approval + rejection
-
-    {:reply, total_votes, new_state}
+    judgment = new_state.phase_states.judgment
+    vote_count = judgment.approval + judgment.rejection
+    {:reply, vote_count, new_state}
   end
 
   @impl true
   def handle_call(:process_judgment, _from, %State{} = state) do
-    %{approval: approval, rejection: rejection} = state.phase_states.judgment
-
+    judgment = state.phase_states.judgment
     {message, new_state} =
-      if approval > rejection do
+      if judgment.approval > judgment.rejection do
         [{target, _} | _] = state.phase_states.vote.result.counts
         Role.kill_player(target.role, :judgment, target.id, state)
       else
@@ -236,8 +246,8 @@ defmodule Mafia.Game.Server do
 
     result =
       game_over?(new_state.players)
-      |> Map.put(:approval, approval)
-      |> Map.put(:rejection, rejection)
+      |> Map.put(:approval, judgment.approval)
+      |> Map.put(:rejection, judgment.rejection)
       |> Map.put(:message, message)
 
     {:reply, result, new_state}
@@ -249,7 +259,7 @@ defmodule Mafia.Game.Server do
       %{
         targets: %{},
         result: %{
-          message: "아무 일도 일어나지 않았습니다."
+          message: nil
         }
       }
 
@@ -257,6 +267,7 @@ defmodule Mafia.Game.Server do
       state
       |> Map.put(:phase, :night)
       |> put_in([:phase_states, :night], night)
+      |> apply_begin_phase(:night)
 
     {:reply, :ok, new_state}
   end
@@ -286,7 +297,7 @@ defmodule Mafia.Game.Server do
   end
 
   defp member_to_player({id, %{name: name}}) do
-    Mafia.Game.Player.new(id, name)
+    {id, Mafia.Game.Player.new(id, name)}
   end
 
   defp assign_roles(state) do
@@ -316,11 +327,11 @@ defmodule Mafia.Game.Server do
   end
 
   defp generate_roles(role_setting, role_counts, count) do
-    active_roles = role_setting |> Map.filter(fn {_role, active} -> active end) |> Map.keys()
-    fixed_roles = for {role, count} <- role_counts, role in active_roles, _ <- 1..count, do: role
+    active_roles = role_setting |> Map.filter(fn {_module, active} -> active end) |> Map.keys()
+    fixed_roles = for {module, count} <- role_counts, module in active_roles, _ <- 1..count, do: module
     rest_roles =
       role_setting
-      |> Map.filter(fn {role, active} -> active and role not in active_roles end)
+      |> Map.filter(fn {module, active} -> active and module not in fixed_roles end)
       |> Map.keys()
       |> Stream.concat(Stream.repeatedly(fn -> Role.Citizen end))
       |> Enum.take(count - length(fixed_roles))
@@ -330,6 +341,13 @@ defmodule Mafia.Game.Server do
 
   defp update_player_role(player, role_module) do
     %{player | role: apply(role_module, :new, [])}
+  end
+
+  defp apply_begin_phase(state, phase) do
+    state.players
+    |> Enum.reduce(state, fn {id, %{role: role}}, state ->
+      Role.begin_phase(role, phase, id, state)
+    end)
   end
 
   defp game_over?(players) do
@@ -347,13 +365,12 @@ defmodule Mafia.Game.Server do
   end
 
   defp mafia_win?(players) do
-    mafia_count =
-      players
-      |> Enum.filter(fn {_id, %{role: role}} ->
-        Role.team(role) === :mafia
-      end)
-      |> Enum.count()
-
-    mafia_count * 2 >= map_size(players)
+    players
+    |> Enum.filter(fn {_id, %{role: role}} ->
+      Role.team(role) === :mafia
+    end)
+    |> Enum.count()
+    |> Kernel.*(2)
+    |> Kernel.>=(map_size(players))
   end
 end

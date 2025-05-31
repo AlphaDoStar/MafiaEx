@@ -1,6 +1,5 @@
 defprotocol Mafia.Game.Role do
-  alias Mafia.Game.State
-  alias Mafia.Game.Player
+  alias Mafia.Game.{Player, State}
 
   @type team() :: :citizen | :mafia | :neutral
 

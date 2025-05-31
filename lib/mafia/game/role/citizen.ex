@@ -1,6 +1,8 @@
 defmodule Mafia.Game.Role.Citizen do
+  alias Mafia.Game.Player
+
   @type id :: String.t()
-  @type targets :: %{pos_integer() => id()}
+  @type targets :: %{pos_integer() => Player.t()}
   @type t :: %__MODULE__{
     targets: targets()
   }
@@ -65,7 +67,7 @@ defimpl Mafia.Game.Role, for: Mafia.Game.Role.Citizen do
   @spec kill_player(Role.Unknown.t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
   def kill_player(_, _, player_id, state) do
     new_state = put_in(state, [:players, player_id, :alive], false)
-    player = get_in(state, [:players, player_id])
+    player = new_state.players[player_id]
     message = "#{player.name} 님이 사망했습니다."
     {message, new_state}
   end

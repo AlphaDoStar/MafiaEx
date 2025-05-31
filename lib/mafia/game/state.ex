@@ -20,7 +20,7 @@ defmodule Mafia.Game.State do
         adjusted_time: %{id() => boolean()}
       },
       vote: %{
-        candidates: %{pos_integer() => id()},
+        candidates: %{pos_integer() => Player.t()},
         counts: %{id() => pos_integer()},
         voted: %{id() => boolean()},
         result: %{

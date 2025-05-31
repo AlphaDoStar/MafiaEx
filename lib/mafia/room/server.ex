@@ -1,5 +1,6 @@
 defmodule Mafia.Room.Server do
   use GenServer
+  alias Mafia.Room.State
 
   @impl true
   def init(%{id: id, host: {host_id, host_name}}) do
@@ -7,48 +8,43 @@ defmodule Mafia.Room.Server do
   end
 
   @impl true
-  def handle_call({:host?, id}, _from, state) do
-    comparison = state.host === id
+  def handle_call({:host?, id}, _from, %State{} = state) do
+    comparison = state.host == id
     {:reply, comparison, state}
   end
 
   @impl true
-  def handle_call(:game_started?, _from, state) do
-    {:reply, state.game_started, state}
-  end
-
-  @impl true
-  def handle_call({:set_name, name}, _from, state) do
+  def handle_call({:set_name, name}, _from, %State{} = state) do
     new_state = Map.put(state, :name, name)
     {:reply, :ok, new_state}
   end
 
   @impl true
-  def handle_call(:name, _from, state) do
+  def handle_call(:name, _from, %State{} = state) do
     {:reply, state.name, state}
   end
 
   @impl true
-  def handle_call({:add_member, id, name}, _from, state) do
+  def handle_call({:add_member, id, name}, _from, %State{} = state) do
     new_state = put_in(state, [:members, id], %{name: name, meeting: nil})
     {:reply, :ok, new_state}
   end
 
   @impl true
-  def handle_call({:transfer_host, id}, _from, state) do
-    new_state = Map.put(state, :host, id)
-    host_name = get_in(new_state, [:members, id, :name])
-    {:reply, host_name, new_state}
-  end
-
-  @impl true
-  def handle_call(:member_count, _from, state) do
+  def handle_call(:member_count, _from, %State{} = state) do
     {:reply, map_size(state.members), state}
   end
 
   @impl true
-  def handle_call({:remove_member, id}, _from, state) do
-    member = get_in(state, [:members, id])
+  def handle_call({:transfer_host, id}, _from, %State{} = state) do
+    new_state = Map.put(state, :host, id)
+    host_name = new_state.members[id][:name]
+    {:reply, host_name, new_state}
+  end
+
+  @impl true
+  def handle_call({:remove_member, id}, _from, %State{} = state) do
+    member = state.members[id]
     new_state =
       state
       |> update_in([:members], &Map.delete(&1, id))
@@ -58,7 +54,7 @@ defmodule Mafia.Room.Server do
   end
 
   @impl true
-  def handle_call({:broadcast_message, message, prefix}, _from, state) do
+  def handle_call({:broadcast_message, message, prefix}, _from, %State{} = state) do
     recipients = Map.keys(state.members)
     text = if prefix, do: "◐ Mafia ⟩  #{message}", else: message
     Mafia.Messenger.send_text_to_many(recipients, text)
@@ -66,8 +62,8 @@ defmodule Mafia.Room.Server do
   end
 
   @impl true
-  def handle_call({:broadcast_member_message, user_id, message}, _from, state) do
-    user = get_in(state, [:members, user_id])
+  def handle_call({:broadcast_member_message, user_id, message}, _from, %State{} = state) do
+    user = state.members[user_id]
 
     lobby_members = lobby_members(state, user_id)
     meeting_members = meeting_members(state, user_id, user.meeting)
@@ -79,7 +75,7 @@ defmodule Mafia.Room.Server do
   end
 
   @impl true
-  def handle_call({:toggle_active_roles, indices}, _from, state) do
+  def handle_call({:toggle_active_roles, indices}, _from, %State{} = state) do
     new_active_roles =
       state.settings.active_roles
       |> Enum.with_index(1)
@@ -93,12 +89,17 @@ defmodule Mafia.Room.Server do
   end
 
   @impl true
-  def handle_call(:state, _from, state) do
+  def handle_call(:game_started?, _from, %State{} = state) do
+    {:reply, state.game_started, state}
+  end
+
+  @impl true
+  def handle_call(:state, _from, %State{} = state) do
     {:reply, state, state}
   end
 
   @impl true
-  def handle_call({:create_meeting, name, ids}, _from, state) do
+  def handle_call({:create_meeting, name, ids}, _from, %State{} = state) do
     id_set = MapSet.new(ids)
     new_state =
       state
@@ -121,7 +122,7 @@ defmodule Mafia.Room.Server do
   end
 
   @impl true
-  def handle_call(:end_meetings, _from, state) do
+  def handle_call(:end_meetings, _from, %State{} = state) do
     new_state =
       state
       |> Map.put(:meetings, %{})
@@ -135,14 +136,14 @@ defmodule Mafia.Room.Server do
   end
 
   @impl true
-  def handle_call(:end_room, _from, state) do
+  def handle_call(:end_room, _from, %State{} = state) do
     {:stop, :normal, :ok, state}
   end
 
   defp lobby_members(state, user_id) do
     state.members
     |> Enum.filter(fn {id, member} ->
-      id !== user_id and is_nil(member.meeting)
+      id != user_id and is_nil(member.meeting)
     end)
     |> Enum.map(fn {id, _} -> id end)
   end
@@ -151,7 +152,7 @@ defmodule Mafia.Room.Server do
   defp meeting_members(state, user_id, meeting) do
     state.members
     |> Enum.filter(fn {id, member} ->
-      id !== user_id and member.meeting === meeting
+      id != user_id and member.meeting == meeting
     end)
     |> Enum.map(fn {id, _} -> id end)
   end

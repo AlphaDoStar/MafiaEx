@@ -31,7 +31,7 @@ defmodule Mafia.Game.Role.Manager do
   @spec role_module_by_atom(atom()) :: module()
   def role_module_by_atom(atom) do
     module = Enum.find(@role_structs, fn struct ->
-      Role.atom(struct) === atom
+      Role.atom(struct) == atom
     end)
 
     if module, do: module.__struct__, else: Role.Unknown
@@ -40,7 +40,7 @@ defmodule Mafia.Game.Role.Manager do
   @spec role_struct_by_atom(atom()) :: struct()
   def role_struct_by_atom(atom) do
     Enum.find(@role_structs, Role.Unknown.new(), fn struct ->
-      Role.atom(struct) === atom
+      Role.atom(struct) == atom
     end)
   end
 

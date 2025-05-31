@@ -1,6 +1,8 @@
 defmodule Mafia.Game.Role.Lover do
+  alias Mafia.Game.Player
+
   @type id :: String.t()
-  @type targets :: %{pos_integer() => id()}
+  @type targets :: %{pos_integer() => Player.t()}
   @type t :: %__MODULE__{
     targets: targets()
   }
@@ -63,21 +65,20 @@ defimpl Mafia.Game.Role, for: Mafia.Game.Role.Lover do
 
   @impl true
   @spec kill_player(Role.Lover.t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
-  def kill_player(_, _, player_id, state) do
+  def kill_player(_, _, player_id, %State{} = state) do
+    player_name = state.players[player_id].name
     case Enum.find(state.players, &lover_and_alive?/1) do
       nil ->
         new_state = put_in(state, [:players, player_id, :alive], false)
-        player = get_in(state, [:players, player_id])
-        message = "#{player.name} 님이 사망했습니다."
+        message = "#{player_name} 님이 사망했습니다."
         {message, new_state}
 
       {id, partner} ->
         new_state = put_in(state, [:players, id, :alive], false)
-        player = get_in(state, [:players, player_id])
         message =
           """
           #{partner.name} 님이
-          연인 #{player.name} 님을 대신하여
+          연인 #{player_name} 님을 대신하여
           희생했습니다.
           """
           |> String.trim_trailing()
@@ -87,6 +88,6 @@ defimpl Mafia.Game.Role, for: Mafia.Game.Role.Lover do
   end
 
   defp lover_and_alive?({_id, player}) do
-    Role.atom(player.role) === :lover and player.alive
+    Role.atom(player.role) == :lover and player.alive
   end
 end

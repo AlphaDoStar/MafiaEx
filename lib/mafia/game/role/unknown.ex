@@ -1,6 +1,8 @@
 defmodule Mafia.Game.Role.Unknown do
+  alias Mafia.Game.Player
+
   @type id :: String.t()
-  @type targets :: %{pos_integer() => id()}
+  @type targets :: %{pos_integer() => Player.t()}
   @type t :: %__MODULE__{
     targets: targets()
   }

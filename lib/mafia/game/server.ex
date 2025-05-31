@@ -31,6 +31,18 @@ defmodule Mafia.Game.Server do
   end
 
   @impl true
+  def handle_call({:alive?, id}, _from, %State{} = state) do
+    alive = state.players[id].alive
+    {:reply, alive, state}
+  end
+
+  @impl true
+  def handle_call({:player, id}, _from, %State{} = state) do
+    player = state.players[id]
+    {:reply, player, state}
+  end
+
+  @impl true
   def handle_call(:begin_day, _from, %State{} = state) do
     new_state =
       state
@@ -65,7 +77,7 @@ defmodule Mafia.Game.Server do
 
   @impl true
   def handle_call({:time_adjusted?, id}, _from, %State{} = state) do
-    adjusted_time = get_in(state, [:phase_states, :discussion, :adjusted_time, id]) || false
+    adjusted_time = state.phase_states[:discussion][:adjusted_time][id] || false
     {:reply, adjusted_time, state}
   end
 
@@ -88,8 +100,9 @@ defmodule Mafia.Game.Server do
     candidates =
       state.players
       |> Enum.filter(fn {_id, player} -> player.alive end)
-      |> Enum.with_index()
-      |> Enum.map(fn {{id, _player}, index} -> {index, id} end)
+      |> Enum.sort_by(fn {_id, %{name: name}} -> String.length(name) end)
+      |> Enum.with_index(1)
+      |> Enum.map(fn {{_id, player}, index} -> {index, player} end)
       |> Map.new()
 
     vote =
@@ -114,51 +127,59 @@ defmodule Mafia.Game.Server do
 
   @impl true
   def handle_call(:candidates, _from, %State{} = state) do
-    candidates = state.phase_states.vote.candidates
+    candidates = state.phase_states[:vote][:candidates]
     {:reply, candidates, state}
   end
 
   @impl true
   def handle_call({:voted?, id}, _from, %State{} = state) do
-    voted = get_in(state, [:phase_states, :vote, :voted, id]) || false
+    voted = state.phase_states[:vote][:voted][id] || false
     {:reply, voted, state}
   end
 
   @impl true
-  def handle_call({:vote, voter_id, 0}, _from, %State{} = state) do
-    new_state = put_in(state, [:phase_states, :vote, :voted, voter_id], true)
-    vote_count =
-      new_state.phase_states.vote.counts
-      |> Map.values()
-      |> Enum.sum()
+  def handle_call({:vote, id, 0}, _from, %State{} = state) do
+    new_state = put_in(state, [:phase_states, :vote, :voted, id], true)
+    player_count =
+      new_state.players
+      |> Enum.count(fn {_id, %{alive: alive}} -> alive end)
 
-    {:reply, vote_count, new_state}
+    vote_count =
+      new_state.phase_states[:vote][:voted]
+      |> Enum.count(fn {_id, voted} -> voted end)
+
+    remaining_vote_count = player_count - vote_count
+    {:reply, remaining_vote_count, new_state}
   end
-  def handle_call({:vote, voter_id, index}, _from, %State{} = state) do
-    target_id = get_in(state, [:phase_states, :vote, :candidates, index])
+  def handle_call({:vote, id, index}, _from, %State{} = state) do
+    target = state.phase_states[:vote][:candidates][index]
     new_state =
       state
-      |> update_in([:phase_states, :vote, :counts, target_id], &((&1 || 0) + 1))
-      |> put_in([:phase_states, :vote, :voted, voter_id], true)
+      |> update_in([:phase_states, :vote, :counts, target.id], &((&1 || 0) + 1))
+      |> put_in([:phase_states, :vote, :voted, id], true)
+
+    player_count =
+      new_state.players
+      |> Enum.count(fn {_id, %{alive: alive}} -> alive end)
 
     vote_count =
-      new_state.phase_states.vote.counts
-      |> Map.values()
-      |> Enum.sum()
+      new_state.phase_states[:vote][:voted]
+      |> Enum.count(fn {_id, voted} -> voted end)
 
-    {:reply, vote_count, new_state}
+    remaining_vote_count = player_count - vote_count
+    {:reply, remaining_vote_count, new_state}
   end
 
   @impl true
   def handle_call(:process_vote, _from, %State{} = state) do
-    voter_count = map_size(state.phase_states.vote.voted)
+    voter_count = map_size(state.phase_states[:vote][:voted])
     vote_count =
-      state.phase_states.vote.counts
+      state.phase_states[:vote][:counts]
       |> Map.values()
       |> Enum.sum()
 
     sorted_counts =
-      state.phase_states.vote.counts
+      state.phase_states[:vote][:counts]
       |> Enum.sort_by(fn {_id, count} -> count end, :desc)
       |> Enum.map(fn {id, count} -> {state.players[id], count} end)
 
@@ -170,7 +191,7 @@ defmodule Mafia.Game.Server do
 
     tied =
       sorted_counts
-      |> Enum.count(fn {_player, count} -> count === first_count end)
+      |> Enum.count(fn {_player, count} -> count == first_count end)
       |> Kernel.>(1)
 
     skipped_count = voter_count - vote_count
@@ -181,7 +202,7 @@ defmodule Mafia.Game.Server do
         skipped_count: skipped_count
       }
 
-    new_state = put_in(state.phase_states.vote.result, result)
+    new_state = put_in(state, [:phase_states, :vote, :result], result)
     {:reply, result, new_state}
   end
 
@@ -215,30 +236,35 @@ defmodule Mafia.Game.Server do
 
   @impl true
   def handle_call({:judged?, id}, _from, %State{} = state) do
-    judged = get_in(state, [:phase_states, :judgment, :judged, id]) || false
+    judged = state.phase_states[:judgment][:judged][id] || false
     {:reply, judged, state}
   end
 
   @impl true
-  def handle_call({:judge, id, approved}, _from, %State{} = state) do
+  def handle_call({:judge, id, choice}, _from, %State{} = state) do
     new_state =
-      case approved do
-        true -> update_in(state.phase_states.judgment.approval, &(&1 + 1))
-        false -> update_in(state.phase_states.judgment.rejection, &(&1 + 1))
+      case choice do
+        :yes -> update_in(state, [:phase_states, :judgment, :approval], &(&1 + 1))
+        :no -> update_in(state, [:phase_states, :judgment, :rejection], &(&1 + 1))
       end
       |> put_in([:phase_states, :judgment, :judged, id], true)
 
-    judgment = new_state.phase_states.judgment
+    player_count =
+      new_state.players
+      |> Enum.count(fn {_id, %{alive: alive}} -> alive end)
+
+    judgment = new_state.phase_states[:judgment]
     vote_count = judgment.approval + judgment.rejection
-    {:reply, vote_count, new_state}
+    remaining_vote_count = player_count - vote_count
+    {:reply, remaining_vote_count, new_state}
   end
 
   @impl true
   def handle_call(:process_judgment, _from, %State{} = state) do
-    judgment = state.phase_states.judgment
+    judgment = state.phase_states[:judgment]
     {message, new_state} =
       if judgment.approval > judgment.rejection do
-        [{target, _} | _] = state.phase_states.vote.result.counts
+        [{target, _} | _] = state.phase_states[:vote][:result][:counts]
         Role.kill_player(target.role, :judgment, target.id, state)
       else
         {nil, state}
@@ -274,26 +300,36 @@ defmodule Mafia.Game.Server do
 
   @impl true
   def handle_call({:available_targets, id}, _from, %State{} = state) do
-    available_targets =
-      state
-      |> get_in([:players, id, :role])
-      |> Role.available_targets(:night)
-
+    role = state.players[id].role
+    available_targets = Role.available_targets(role, :night)
     {:reply, available_targets, state}
+  end
+
+  @impl true
+  def handle_call({:register_ability, id, index}, _from, %State{} = state) do
+    role = state.players[id].role
+    target = role.targets[index]
+    {message, new_state} = Role.register_ability(role, :night, target.id, state)
+    {:reply, message, new_state}
   end
 
   @impl true
   def handle_call(:process_night, _from, %State{} = state) do
     new_state =
-      state.phase_states.night.targets
+      state.phase_states[:night][:targets]
       |> Enum.map(fn {module, id} -> {apply(module, :new, []), id} end)
       |> Enum.sort_by(fn {role, _id} -> Role.priority(role) end)
       |> Enum.reduce(state, fn {role, id}, state ->
         Role.resolve_ability(role, :night, id, state)
       end)
 
-    result = new_state.phase_states.night.result
+    result = new_state.phase_states[:night][:result]
     {:reply, result, new_state}
+  end
+
+  @impl true
+  def handle_call(:end_game, _from, %State{} = state) do
+    {:stop, :normal, :ok, state}
   end
 
   defp member_to_player({id, %{name: name}}) do
@@ -360,14 +396,14 @@ defmodule Mafia.Game.Server do
 
   defp citizen_win?(players) do
     Enum.all?(players, fn {_id, %{role: role}} ->
-      Role.team(role) !== :mafia
+      Role.team(role) != :mafia
     end)
   end
 
   defp mafia_win?(players) do
     players
     |> Enum.filter(fn {_id, %{role: role}} ->
-      Role.team(role) === :mafia
+      Role.team(role) == :mafia
     end)
     |> Enum.count()
     |> Kernel.*(2)

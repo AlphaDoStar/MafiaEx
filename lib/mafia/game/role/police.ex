@@ -1,6 +1,8 @@
 defmodule Mafia.Game.Role.Police do
+  alias Mafia.Game.Player
+
   @type id :: String.t()
-  @type targets :: %{pos_integer() => id}
+  @type targets :: %{pos_integer() => Player.t()}
   @type t :: %__MODULE__{
     targets: targets()
   }
@@ -52,7 +54,7 @@ defimpl Mafia.Game.Role, for: Mafia.Game.Role.Police do
       state.players
       |> Enum.filter(&not_police_and_alive?/1)
       |> Enum.sort_by(fn {_id, %{name: name}} -> String.length(name) end)
-      |> Enum.with_index()
+      |> Enum.with_index(1)
       |> Enum.map(fn {{_id, player}, index} -> {index, player} end)
       |> Map.new()
 
@@ -67,14 +69,13 @@ defimpl Mafia.Game.Role, for: Mafia.Game.Role.Police do
 
   @impl true
   @spec register_ability(Role.Police.t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
-  def register_ability(role, :night, target_id, state) do
-    keys = [:phase_states, :night, :targets, role.__struct__]
-    case get_in(state, keys) do
+  def register_ability(role, :night, target_id, %State{} = state) do
+    case state.phase_states[:night][:targets][role.__struct__] do
       nil ->
-        new_state = put_in(state, keys, target_id)
-        target = get_in(state, [:players, target_id])
+        new_state = put_in(state, [:phase_states, :night, :targets, role.__struct__], target_id)
+        target = new_state.players[target_id]
         message =
-          if Role.team(target.role) === :mafia do
+          if Role.team(target.role) == :mafia do
             "#{target.name} 님은 마피아입니다."
           else
             "#{target.name} 님은 마피아가 아닙니다."
@@ -82,7 +83,8 @@ defimpl Mafia.Game.Role, for: Mafia.Game.Role.Police do
 
         {message, new_state}
 
-      _ -> {"이미 능력을 사용했습니다.", state}
+      _ ->
+        {"이미 능력을 사용했습니다.", state}
     end
   end
   def register_ability(_, _, _, state), do: {"사용할 수 있는 능력이 없습니다.", state}
@@ -95,12 +97,12 @@ defimpl Mafia.Game.Role, for: Mafia.Game.Role.Police do
   @spec kill_player(Role.Police.t(), State.phase(), State.id(), State.t()) :: {String.t(), State.t()}
   def kill_player(_, _, player_id, state) do
     new_state = put_in(state, [:players, player_id, :alive], false)
-    player = get_in(state, [:players, player_id])
+    player = new_state.players[player_id]
     message = "#{player.name} 님이 사망했습니다."
     {message, new_state}
   end
 
   defp not_police_and_alive?({_id, player}) do
-    Role.atom(player.role) === :police and player.alive
+    Role.atom(player.role) != :police and player.alive
   end
 end

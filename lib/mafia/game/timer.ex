@@ -2,26 +2,39 @@ defmodule Mafia.Game.Timer do
   use GenServer
   require Logger
 
+  @type id :: String.t()
+
+  @spec start_link(id()) :: GenServer.on_start()
   def start_link(game_id) do
     GenServer.start_link(__MODULE__, :ok, name: via_tuple(game_id))
   end
 
+  @spec reset(id(), pos_integer()) :: :ok
   def reset(game_id, new_duration) do
     GenServer.cast(via_tuple(game_id), {:reset, new_duration})
   end
 
+  @spec start(id(), %{pos_integer() => function(), required(:main) => function()}) :: :ok
   def start(game_id, callbacks) do
     GenServer.cast(via_tuple(game_id), {:start, callbacks})
   end
 
+  @spec extend(id(), pos_integer()) :: :ok
   def extend(game_id, ms) do
     GenServer.cast(via_tuple(game_id), {:extend, ms})
   end
 
+  @spec reduce(id(), pos_integer()) :: :ok
   def reduce(game_id, ms) do
     GenServer.cast(via_tuple(game_id), {:reduce, ms})
   end
 
+  @spec stop(id()) :: :ok
+  def stop(game_id) do
+    GenServer.cast(via_tuple(game_id), :stop)
+  end
+
+  @spec remaining(id()) :: pos_integer()
   def remaining(game_id) do
     GenServer.call(via_tuple(game_id), :remaining)
   end
@@ -49,16 +62,17 @@ defmodule Mafia.Game.Timer do
 
   @impl true
   def handle_cast({:extend, ms}, state) when ms > 0 do
-    new_state = case state.status do
-      :running ->
-        cancel_all_timers(state.timer_refs)
-        elapsed = System.monotonic_time(:millisecond) - state.start_time
-        remaining = max(0, state.duration - elapsed) + ms
-        %{state | duration: remaining} |> start_timer(state.callbacks)
+    new_state =
+      case state.status do
+        :running ->
+          cancel_all_timers(state.timer_refs)
+          elapsed = System.monotonic_time(:millisecond) - state.start_time
+          remaining = max(0, state.duration - elapsed) + ms
+          %{state | duration: remaining} |> start_timer(state.callbacks)
 
-      _ ->
-        %{state | duration: state.duration + ms}
-    end
+        _ ->
+          %{state | duration: state.duration + ms}
+      end
     {:noreply, new_state}
   end
   def handle_cast({:extend, _ms}, state) do
@@ -67,20 +81,28 @@ defmodule Mafia.Game.Timer do
 
   @impl true
   def handle_cast({:reduce, ms}, state) when ms > 0 do
-    new_state = case state.status do
-      :running ->
-        cancel_all_timers(state.timer_refs)
-        elapsed = System.monotonic_time(:millisecond) - state.start_time
-        remaining = max(0, state.duration - elapsed - ms)
-        %{state | duration: remaining} |> start_timer(state.callbacks)
+    new_state =
+      case state.status do
+        :running ->
+          cancel_all_timers(state.timer_refs)
+          elapsed = System.monotonic_time(:millisecond) - state.start_time
+          remaining = max(0, state.duration - elapsed - ms)
+          %{state | duration: remaining} |> start_timer(state.callbacks)
 
-      _ ->
-        %{state | duration: max(0, state.duration - ms)}
-    end
+        _ ->
+          %{state | duration: max(0, state.duration - ms)}
+      end
     {:noreply, new_state}
   end
   def handle_cast({:reduce, _ms}, state) do
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(:stop, state) do
+    if state.status == :running, do: cancel_all_timers(state.timer_refs)
+    new_state =  %{state | duration: 0} |> start_timer(state.callbacks)
+    {:noreply, new_state}
   end
 
   @impl true
@@ -115,7 +137,7 @@ defmodule Mafia.Game.Timer do
     {:noreply, state}
   end
 
-  defp initial_state(duration \\ nil) do
+  defp initial_state(duration \\ 0) do
     %{
       status: :reset,
       duration: duration,

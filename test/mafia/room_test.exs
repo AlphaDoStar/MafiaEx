@@ -38,7 +38,7 @@ defmodule Mafia.RoomTest do
 
   @tag :room_test_2
   test "방 생성 및 이름 설정" do
-    assert Mafia.API.create_room("001", "AlphaDo") === {:ok, :success}
+    assert Mafia.API.create_room("001", "AlphaDo") == {:ok, :success}
 
     room_id = Mafia.User.API.room_id("001")
     assert not is_nil(room_id)
@@ -46,7 +46,7 @@ defmodule Mafia.RoomTest do
     assert Mafia.Room.Supervisor.room_exists?(room_id)
     assert Mafia.Room.API.host?(room_id, "001")
 
-    assert Mafia.API.set_room_name("001", "테스트 방") === {:ok, :success}
+    assert Mafia.API.set_room_name("001", "테스트 방") == {:ok, :success}
 
     Mafia.Room.Supervisor.all_room_ids()
     |> IO.inspect(pretty: true)
@@ -62,9 +62,9 @@ defmodule Mafia.RoomTest do
 
     room_id = Mafia.User.API.room_id("001")
 
-    assert Mafia.API.join_room("001", room_id, "AlphaDo") === {:error, :already_in_room}
-    assert Mafia.API.join_room("002", room_id, "원희") === {:ok, :success}
-    assert Mafia.API.join_room("003", room_id, "샌즈") === {:ok, :success}
+    assert Mafia.API.join_room("001", room_id, "AlphaDo") == {:error, :already_in_room}
+    assert Mafia.API.join_room("002", room_id, "원희") == {:ok, :success}
+    assert Mafia.API.join_room("003", room_id, "샌즈") == {:ok, :success}
   end
 
   @tag :room_test_4
@@ -90,15 +90,15 @@ defmodule Mafia.RoomTest do
     Mafia.API.join_room("002", room_id, "원희")
 
     # 방장만 방 이름 변경 가능
-    assert Mafia.API.set_room_name("001", "ILLIT and GLLIT") === {:ok, :success}
-    assert Mafia.API.set_room_name("002", "원희가 세상을 지배한다") === {:ok, :not_host}
+    assert Mafia.API.set_room_name("001", "ILLIT and GLLIT") == {:ok, :success}
+    assert Mafia.API.set_room_name("002", "원희가 세상을 지배한다") == {:ok, :not_host}
 
     # 방장은 퇴장 불가
-    assert Mafia.API.leave_room("001") === {:ok, :host_cannot_leave}
+    assert Mafia.API.leave_room("001") == {:ok, :not_allowed_as_host}
 
     # 방장 위임 후 나가기 가능
-    assert Mafia.API.transfer_host("001", "002") === {:ok, :success}
-    assert Mafia.API.leave_room("001") === {:ok, :success}
+    assert Mafia.API.transfer_host("001", "002") == {:ok, :success}
+    assert Mafia.API.leave_room("001") == {:ok, :success}
   end
 
   @tag :room_test_6

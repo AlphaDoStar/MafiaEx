@@ -1,5 +1,5 @@
 defmodule Mafia.Game.API do
-  # alias Mafia.Game.State
+  alias Mafia.Game.{Player, State}
 
   def start_link(%Mafia.Room.State{} = state) do
     GenServer.start_link(Mafia.Game.Server, state, name: via_tuple(state.id))
@@ -13,8 +13,19 @@ defmodule Mafia.Game.API do
     GenServer.call(via_tuple(game_id), :phase)
   end
 
+  @spec players(State.id()) :: State.players()
   def players(game_id) do
     GenServer.call(via_tuple(game_id), :players)
+  end
+
+  @spec alive?(State.id(), Player.id()) :: boolean()
+  def alive?(game_id, player_id) do
+    GenServer.call(via_tuple(game_id), {:alive?, player_id})
+  end
+
+  @spec player(State.id(), Player.id()) :: Player.t()
+  def player(game_id, player_id) do
+    GenServer.call(via_tuple(game_id), {:player, player_id})
   end
 
   def begin_day(game_id) do
@@ -93,8 +104,16 @@ defmodule Mafia.Game.API do
     GenServer.call(via_tuple(game_id), {:available_targets, player_id})
   end
 
+  def register_ability(game_id, player_id, index) do
+    GenServer.call(via_tuple(game_id), {:register_ability, player_id, index})
+  end
+
   def process_night(game_id) do
     GenServer.call(via_tuple(game_id), :process_night)
+  end
+
+  def end_game(game_id) do
+    GenServer.call(via_tuple(game_id), :end_game)
   end
 
   defp via_tuple(game_id) do

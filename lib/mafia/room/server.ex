@@ -48,7 +48,12 @@ defmodule Mafia.Room.Server do
     new_state =
       state
       |> update_in([:members], &Map.delete(&1, id))
-      |> update_in([:meetings, member.meeting], &List.delete(&1, id))
+      |> then(fn new_state ->
+        case member.meeting do
+          nil -> new_state
+          meeting -> update_in(new_state, [:meetings, meeting], &List.delete(&1, id))
+        end
+      end)
 
     {:reply, member.name, new_state}
   end
@@ -86,11 +91,6 @@ defmodule Mafia.Room.Server do
 
     new_state = put_in(state, [:settings, :active_roles], new_active_roles)
     {:reply, :ok, new_state}
-  end
-
-  @impl true
-  def handle_call(:game_started?, _from, %State{} = state) do
-    {:reply, state.game_started, state}
   end
 
   @impl true

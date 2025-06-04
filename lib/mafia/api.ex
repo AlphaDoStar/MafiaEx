@@ -7,22 +7,18 @@ defmodule Mafia.API do
         case Room.Supervisor.create_room(user_id, user_name) do
           {:ok, room_id} ->
             User.API.join_room(user_id, room_id)
-            Messenger.send_text(user_id, "새로운 방 이름을 입력해 주세요.")
-            {:ok, :success}
+            Messenger.send_text(user_id, "새로운 방을 생성했습니다.")
+            :handled
 
           {:error, reason} ->
             send_error_message(user_id, reason)
         end
 
       room_id ->
-        room_name =
-          room_id
-          |> Room.API.name()
-          |> shorten(10)
-
-        message = "#{user_name} 님은 이미 #{room_name} 방에 참여 중입니다."
+        room_name = Room.API.name(room_id)
+        message = "#{user_name} 님은 이미\n⌈#{room_name}⌋ 방에 참여 중입니다."
         Messenger.send_text(user_id, message)
-        {:ok, :already_in_room}
+        :rejected
     end
   end
 
@@ -31,27 +27,49 @@ defmodule Mafia.API do
       cond do
         not Room.API.host?(room_id, user_id) ->
           Messenger.send_text(user_id, "관리자만 방 이름을 설정할 수 있습니다.")
-          {:ok, :not_host}
+          :rejected
 
         true ->
           Room.API.set_name(room_id, room_name)
           room_name = room_name |> shorten(4)
-          message = "방 이름을 ⌈#{room_name}⌋(으)로\n설정하였습니다." # 조사 처리 필요
+          message = "방 이름을 ⌈#{room_name}⌋(으)로\n설정하였습니다."  # 조사 처리 필요
           Messenger.send_text(user_id, message)
-          {:ok, :success}
+          :handled
       end
     end)
   end
 
-  def join_room(user_id, room_id, user_name) do
+  def list_rooms do
+    Room.Supervisor.ids()
+    |> Enum.map(&Room.API.name/1)
+    |> Enum.with_index(1)
+  end
+
+  def join_room(user_id, index, user_name) do
     case User.API.room_id(user_id) do
       nil ->
+        ids = Room.Supervisor.ids()
         cond do
-          not Room.Supervisor.room_exists?(room_id) ->
-            Messenger.send_text(user_id, "존재하지 않는 방입니다.")
-            {:error, :no_room}
+          Enum.empty?(ids) ->
+            :ignored
+
+          not is_integer(index) ->
+            Messenger.send_text(user_id, "올바른 번호를 입력해 주세요.")
+            :rejected
+
+          index < 1 or index < length(ids) ->
+            message =
+              if length(ids) == 1 do
+                "1번을 입력해 주세요."
+              else
+                "1~#{length(ids)} 사이의 번호를 입력해 주세요."
+              end
+
+            Messenger.send_text(user_id, message)
+            :rejected
 
           true ->
+            room_id = Enum.at(ids, index - 1)
             message = "#{user_name} 님이 입장했습니다."
             Room.API.broadcast_message(room_id, message)
 
@@ -62,14 +80,14 @@ defmodule Mafia.API do
             member_count = Room.API.member_count(room_id)
             message = "#{room_name} 방에 입장했습니다.\n현재 인원: #{member_count}명"
             Messenger.send_text(user_id, message)
-            {:ok, :success}
+            :handled
         end
 
       room_id ->
         room_name = Room.API.name(room_id)
-        message = "#{user_name} 님은 이미 #{room_name} 방에 참여 중입니다."
+        message = "#{user_name} 님은 이미\n⌈#{room_name}⌋ 방에 참여 중입니다."
         Messenger.send_text(user_id, message)
-        {:error, :already_in_room}
+        :rejected
     end
   end
 
@@ -103,16 +121,16 @@ defmodule Mafia.API do
           message = "#{room_name} 방에서 퇴장했습니다."
           Messenger.send_text(user_id, message)
           Room.API.end_room(room_id)
-          {:ok, :success}
+          :handled
 
-        Room.API.game_started?(room_id) ->
+        Game.Supervisor.game_exists?(room_id) ->
           Messenger.send_text(user_id, "게임 중에는 퇴장할 수 없습니다.")
-          {:ok, :not_allowed}
+          :rejected
 
         Room.API.host?(room_id, user_id) ->
           message = "관리자는 퇴장할 수 없습니다.\n다른 사람에게 위임해 주세요."
           Messenger.send_text(user_id, message)
-          {:ok, :not_allowed}
+          :rejected
 
         true ->
           room_name = Room.API.name(room_id)
@@ -124,7 +142,7 @@ defmodule Mafia.API do
           user_name = Room.API.remove_member(room_id, user_id)
           message = "#{user_name} 님이 퇴장했습니다."
           Room.API.broadcast_message(room_id, message)
-          {:ok, :success}
+          :handled
       end
     end)
   end
@@ -132,33 +150,33 @@ defmodule Mafia.API do
   def broadcast_user_message(user_id, message) do
     with_user_in_room(user_id, fn room_id ->
       Room.API.broadcast_member_message(room_id, user_id, message)
-      {:ok, :success}
+      :handled
     end)
   end
 
   def toggle_role_status(user_id, role_indices) when is_list(role_indices) do
     with_user_in_room(user_id, fn room_id ->
       cond do
+        not Room.API.host?(room_id, user_id) ->
+          Messenger.send_text(user_id, "관리자만 설정할 수 있습니다.")
+          :rejected
+
+        Game.Supervisor.game_exists?(room_id) ->
+          Messenger.send_text(user_id, "게임 중에는 설정할 수 없습니다.")
+          :rejected
+
         not Enum.all?(role_indices, fn index ->
           is_integer(index) and
           index > 0 and
           index < length(Game.Role.Manager.role_modules())
         end) ->
           Messenger.send_text(user_id, "올바른 번호를 입력해 주세요.")
-          {:error, :invalid_input}
-
-        not Room.API.host?(room_id, user_id) ->
-          Messenger.send_text(user_id, "관리자만 설정할 수 있습니다.")
-          {:ok, :not_host}
-
-        Room.API.game_started?(room_id) ->
-          Messenger.send_text(user_id, "게임 중에는 설정할 수 없습니다.")
-          {:ok, :game_started}
+          :rejected
 
         true ->
           Room.API.toggle_active_roles(room_id, role_indices)
           Messenger.send_text(user_id, "직업 활성화 설정을 갱신했습니다.")
-          {:ok, :success}
+          :handled
       end
     end)
   end
@@ -166,19 +184,19 @@ defmodule Mafia.API do
   def create_game(user_id) do
     with_user_in_room(user_id, fn room_id ->
       cond do
-        Room.API.game_started?(room_id) ->
-          Messenger.send_text(user_id, "이미 게임이 시작되었습니다.")
-          {:error, :already_started}
-
         not Room.API.host?(room_id, user_id) ->
           Messenger.send_text(user_id, "관리자만 게임을 시작할 수 있습니다.")
-          {:ok, :not_host}
+          :rejected
+
+        Game.Supervisor.game_exists?(room_id) ->
+          Messenger.send_text(user_id, "이미 게임이 시작되었습니다.")
+          :rejected
 
         true ->
           with {:ok, :success} <- Game.Supervisor.create_game(room_id),
                {:ok, :success} <- Game.Supervisor.create_timer(room_id) do
             begin_game(room_id)
-            {:ok, :success}
+            :handled
           else
             {:error, reason} ->
               send_error_message(user_id, reason)
@@ -188,89 +206,80 @@ defmodule Mafia.API do
   end
 
   def extend_time(player_id) do
-    with_user_in_room(player_id, fn game_id ->
-      cond do
-        not Game.API.alive?(game_id, player_id) ->
-          Messenger.send_text(player_id, "당신은 사망했습니다.")
-          {:ok, :not_alive}
+    with_user_in_room(player_id, fn room_id ->
+      with_game_started(room_id, fn game_id ->
+        cond do
+          not Game.API.alive?(game_id, player_id) ->
+            Messenger.send_text(player_id, "당신은 사망했습니다.")
+            :rejected
 
-        Game.API.phase(game_id) != :discussion ->
-          Messenger.send_text(player_id, "토론 시간에만 시간을 조정할 수 있습니다.")
-          {:ok, :not_discussion_phase}
+          Game.API.phase(game_id) != :discussion ->
+            Messenger.send_text(player_id, "토론 시간에만 시간을 조정할 수 있습니다.")
+            :rejected
 
-        Game.API.time_adjusted?(game_id, player_id) ->
-          Messenger.send_text(player_id, "이미 시간을 조정했습니다.")
-          {:ok, :already_adjusted}
+          Game.API.time_adjusted?(game_id, player_id) ->
+            Messenger.send_text(player_id, "이미 시간을 조정했습니다.")
+            :rejected
 
-        true ->
-          Game.API.extend_time(game_id, player_id, 10_000)
-          Room.API.broadcast_message(game_id, "시간이 연장되었습니다.")
-          {:ok, :success}
-      end
+          true ->
+            Game.API.extend_time(game_id, player_id, 10_000)
+            Room.API.broadcast_message(game_id, "시간이 연장되었습니다.")
+            :handled
+        end
+      end)
     end)
   end
 
   def reduce_time(player_id) do
-    with_user_in_room(player_id, fn game_id ->
-      cond do
-        not Game.API.alive?(game_id, player_id) ->
-          Messenger.send_text(player_id, "당신은 사망했습니다.")
-          {:ok, :not_alive}
+    with_user_in_room(player_id, fn room_id ->
+      with_game_started(room_id, fn game_id ->
+        cond do
+          not Game.API.alive?(game_id, player_id) ->
+            Messenger.send_text(player_id, "당신은 사망했습니다.")
+            :rejected
 
-        Game.API.phase(game_id) != :discussion ->
-          Messenger.send_text(player_id, "토론 시간에만 시간을 조정할 수 있습니다.")
-          {:ok, :not_discussion_phase}
+          Game.API.phase(game_id) != :discussion ->
+            Messenger.send_text(player_id, "토론 시간에만 시간을 조정할 수 있습니다.")
+            :rejected
 
-        Game.API.time_adjusted?(game_id, player_id) ->
-          Messenger.send_text(player_id, "이미 시간을 조정했습니다.")
-          {:ok, :already_adjusted}
+          Game.API.time_adjusted?(game_id, player_id) ->
+            Messenger.send_text(player_id, "이미 시간을 조정했습니다.")
+            :rejected
 
-        Game.Timer.remaining(game_id) |> div(1_000) < 10 ->
-          Messenger.send_text(player_id, "남은 시간이 10초 미만입니다.")
-          {:ok, :nearly_expired}
+          Game.Timer.remaining(game_id) |> div(1_000) < 10 ->
+            Messenger.send_text(player_id, "남은 시간이 10초 미만입니다.")
+            :rejected
 
-        true ->
-          Game.API.reduce_time(game_id, player_id, 10_000)
-          Room.API.broadcast_message(game_id, "시간이 단축되었습니다.")
-          {:ok, :success}
-      end
+          true ->
+            Game.API.reduce_time(game_id, player_id, 10_000)
+            Room.API.broadcast_message(game_id, "시간이 단축되었습니다.")
+            :handled
+        end
+      end)
     end)
   end
 
   def select(player_id, index) do
-    with_user_in_room(player_id, fn game_id ->
-      case Game.API.phase(game_id) do
-        :vote -> vote(game_id, player_id, index)
-        :night -> register_ability(game_id, player_id, index)
-        _ -> {:ok, :not_allowed}
-      end
+    with_user_in_room(player_id, fn room_id ->
+      with_game_started(room_id, fn game_id ->
+        case Game.API.phase(game_id) do
+          :vote -> vote(game_id, player_id, index)
+          :night -> register_ability(game_id, player_id, index)
+          _ -> :ignored
+        end
+      end)
     end)
   end
 
   def choice(player_id, choice) do
-    with_user_in_room(player_id, fn game_id ->
-      case Game.API.phase(game_id) do
-        :judgment -> judge(game_id, player_id, choice)
-        _ -> {:ok, :not_allowed}
-      end
+    with_user_in_room(player_id, fn room_id ->
+      with_game_started(room_id, fn game_id ->
+        case Game.API.phase(game_id) do
+          :judgment -> judge(game_id, player_id, choice)
+          _ -> :ignored
+        end
+      end)
     end)
-  end
-
-  defp send_error_message(user_id, reason) do
-    message = "오류가 발생하였습니다.\n원인: #{reason}"
-    Messenger.send_text(user_id, message)
-    {:error, reason}
-  end
-
-  defp with_user_in_room(user_id, fun) do
-    case User.API.room_id(user_id) do
-      nil ->
-        Messenger.send_text(user_id, "방에 입장하지 않은 상태입니다.")
-        {:error, :not_in_room}
-
-      room_id ->
-        fun.(room_id)
-    end
   end
 
   defp shorten(text, length) when is_binary(text) do
@@ -278,6 +287,26 @@ defmodule Mafia.API do
       String.slice(text, 0, length) |> String.trim() |> Kernel.<>("...")
     else
       text
+    end
+  end
+
+  defp send_error_message(user_id, reason) do
+    message = "오류가 발생하였습니다.\n원인: #{inspect(reason, pretty: true)}"
+    Messenger.send_text(user_id, message)
+    :rejected
+  end
+
+  defp with_user_in_room(user_id, fun) do
+    case User.API.room_id(user_id) do
+      nil -> :ignored
+      room_id -> fun.(room_id)
+    end
+  end
+
+  defp with_game_started(room_id, fun) do
+    case Game.Supervisor.game_exists?(room_id) do
+      true -> fun.(room_id)
+      false -> :ignored
     end
   end
 
@@ -296,6 +325,7 @@ defmodule Mafia.API do
           display_name = Game.Role.display_name(player.role)
           message = "#{player.name} 님의 직업은 #{display_name}입니다."
           Messenger.send_text(id, message)
+          Process.sleep(50)
         end)
 
         begin_day(game_id)
@@ -356,9 +386,10 @@ defmodule Mafia.API do
       |> Enum.join("\n")
 
     Game.API.players(game_id)
-    |> Enum.map(&alive?/1)
+    |> Enum.filter(&alive?/1)
     |> Enum.each(fn {id, _player} ->
       Messenger.send_text(id, "0. 기권\n#{candidates}")
+      Process.sleep(50)
     end)
 
     Game.Timer.reset(game_id, 20_000)
@@ -368,10 +399,6 @@ defmodule Mafia.API do
       :main => fn ->
         Room.API.broadcast_message(game_id, "투표가 종료되었습니다.")
         case Game.API.process_vote(game_id) do
-          %{counts: []} ->
-            Room.API.broadcast_message(game_id, "아무도 투표하지 않았습니다.")
-            begin_night(game_id)
-
           %{skipped: true} = result ->
             Room.API.broadcast_message(game_id, format_vote_result(result), false)
             begin_night(game_id)
@@ -393,20 +420,20 @@ defmodule Mafia.API do
     cond do
       not Game.API.alive?(game_id, player_id) ->
         Messenger.send_text(player_id, "당신은 사망했습니다.")
-        {:ok, :not_alive}
+        :rejected
 
       Game.API.voted?(game_id, player_id) ->
         Messenger.send_text(player_id, "이미 투표했습니다.")
-        {:ok, :already_voted}
+        :rejected
 
       not is_integer(index) ->
         Messenger.send_text(player_id, "올바른 번호를 입력해 주세요.")
-        {:ok, :invalid_index}
+        :rejected
 
       index < 0 or index > candidate_count ->
         message = "0~#{candidate_count} 사이의 번호를 입력해 주세요."
         Messenger.send_text(player_id, message)
-        {:ok, :invalid_index}
+        :rejected
 
       true ->
         remaining_vote_count = Game.API.vote(game_id, player_id, index)
@@ -416,11 +443,11 @@ defmodule Mafia.API do
         Room.API.broadcast_message(game_id, message)
 
         if remaining_vote_count == 0, do: Game.Timer.stop(game_id)
-        {:ok, :success}
+        :handled
     end
   end
 
-  defp format_vote_result(%{counts: []}), do: "투표 결과"
+  defp format_vote_result(%{counts: [], skipped_count: 0}), do: "아무도 투표하지 않았습니다."
   defp format_vote_result(result) do
     result.counts
     |> Enum.map(fn {%{name: name}, count} ->
@@ -437,6 +464,7 @@ defmodule Mafia.API do
         ""
       end
     end)
+    |> String.trim_trailing()
   end
 
   defp begin_defense(game_id) do
@@ -474,11 +502,11 @@ defmodule Mafia.API do
             Room.API.broadcast_message(game_id, message)
             game_over(game_id, win)
 
-          %{over: false, win: nil, message: message} ->
-            Room.API.broadcast_message(game_id, message)
+          %{over: false, win: nil, message: nil} ->
             begin_night(game_id)
 
-          %{over: false, win: nil, message: nil} ->
+          %{over: false, win: nil, message: message} ->
+            Room.API.broadcast_message(game_id, message)
             begin_night(game_id)
         end
       end
@@ -489,15 +517,15 @@ defmodule Mafia.API do
     cond do
       not Game.API.alive?(game_id, player_id) ->
         Messenger.send_text(player_id, "당신은 사망했습니다.")
-        {:ok, :not_alive}
+        :rejected
 
       Game.API.judged?(game_id, player_id) ->
         Messenger.send_text(player_id, "이미 투표했습니다.")
-        {:ok, :already_voted}
+        :rejected
 
       choice not in [:yes, :no] ->
         Messenger.send_text(player_id, "잘못된 선택입니다.")
-        {:ok, :invalid_choice}
+        :rejected
 
       true ->
         remaining_vote_count = Game.API.judge(game_id, player_id, choice)
@@ -507,7 +535,7 @@ defmodule Mafia.API do
         Room.API.broadcast_message(game_id, message)
 
         if remaining_vote_count == 0, do: Game.Timer.stop(game_id)
-        {:ok, :success}
+        :handled
     end
   end
 
@@ -521,7 +549,9 @@ defmodule Mafia.API do
     players = Game.API.players(game_id)
 
     players
-    |> Enum.filter(&alive?/1)
+    |> Enum.filter(fn {_id, %{alive: alive, role: role}} ->
+      alive and Game.Role.atom(role) != :citizen
+    end)
     |> Enum.group_by(&role_atom/1, &elem(&1, 0))
     |> Enum.each(fn {atom, players} ->
       Room.API.create_meeting(game_id, atom, players)
@@ -539,6 +569,7 @@ defmodule Mafia.API do
 
         Messenger.send_text(id, "능력 적용 대상을 입력해 주세요.")
         Messenger.send_text(id, message)
+        Process.sleep(50)
       end
     end)
 
@@ -560,19 +591,19 @@ defmodule Mafia.API do
     cond do
       not Game.API.alive?(game_id, player_id) ->
         Messenger.send_text(player_id, "당신은 사망했습니다.")
-        {:ok, :not_alive}
+        :rejected
 
       target_count == 0 ->
-        {:ok, :not_allowed}
+        :rejected
 
       not is_integer(index) ->
         Messenger.send_text(player_id, "올바른 번호를 입력해 주세요.")
-        {:ok, :invalid_index}
+        :rejected
 
       index < 1 or index > target_count ->
         message = "1~#{target_count} 사이의 번호를 입력해 주세요."
         Messenger.send_text(player_id, message)
-        {:ok, :invalid_index}
+        :rejected
 
       true ->
         players = Game.API.players(game_id)
@@ -581,9 +612,12 @@ defmodule Mafia.API do
 
         players
         |> Enum.filter(fn {_id, %{role: role}} -> Game.Role.atom(role) == atom end)
-        |> Enum.each(fn {id, _player} -> Messenger.send_text(id, message) end)
+        |> Enum.each(fn {id, _player} ->
+          Messenger.send_text(id, message)
+          Process.sleep(50)
+        end)
 
-        {:ok, :success}
+        :handled
     end
   end
 
@@ -602,6 +636,7 @@ defmodule Mafia.API do
     Room.API.broadcast_message(game_id, message)
     Room.API.end_meetings(game_id)
     Game.API.end_game(game_id)
+    Game.Timer.shutdown(game_id)
   end
 
   defp alive?({_id, %{alive: alive}}), do: alive

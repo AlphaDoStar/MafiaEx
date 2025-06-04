@@ -17,7 +17,6 @@ defmodule Mafia.Room.State do
     id: id(),
     name: String.t(),
     host: id(),
-    game_started: boolean(),
     settings: settings(),
     members: %{id() => member()},
     meetings: %{atom() => [id()]}
@@ -29,7 +28,6 @@ defmodule Mafia.Room.State do
     :name,
     :host,
     :members,
-    game_started: false,
     settings: %{
       mafia_count: nil,
       active_roles: Role.Manager.default_active_roles()

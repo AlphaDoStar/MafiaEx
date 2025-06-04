@@ -62,9 +62,9 @@ defmodule Mafia.RoomTest do
 
     room_id = Mafia.User.API.room_id("001")
 
-    assert Mafia.API.join_room("001", room_id, "AlphaDo") == {:error, :already_in_room}
-    assert Mafia.API.join_room("002", room_id, "원희") == {:ok, :success}
-    assert Mafia.API.join_room("003", room_id, "샌즈") == {:ok, :success}
+    assert Mafia.API.join_room("001", 1, "AlphaDo") == {:error, :already_in_room}
+    assert Mafia.API.join_room("002", 1, "원희") == {:ok, :success}
+    assert Mafia.API.join_room("003", 1, "샌즈") == {:ok, :success}
   end
 
   @tag :room_test_4
@@ -73,8 +73,8 @@ defmodule Mafia.RoomTest do
     Mafia.API.set_room_name("001", "테스트 방")
 
     room_id = Mafia.User.API.room_id("001")
-    Mafia.API.join_room("002", room_id, "원희")
-    Mafia.API.join_room("003", room_id, "샌즈")
+    Mafia.API.join_room("002", 1, "원희")
+    Mafia.API.join_room("003", 1, "샌즈")
 
     Mafia.API.broadcast_user_message("001", "나는 AlphaDo")
     Mafia.API.broadcast_user_message("002", "나는 원희")
@@ -87,7 +87,7 @@ defmodule Mafia.RoomTest do
     Mafia.API.set_room_name("001", "테스트 방")
 
     room_id = Mafia.User.API.room_id("001")
-    Mafia.API.join_room("002", room_id, "원희")
+    Mafia.API.join_room("002", 1, "원희")
 
     # 방장만 방 이름 변경 가능
     assert Mafia.API.set_room_name("001", "ILLIT and GLLIT") == {:ok, :success}
@@ -107,7 +107,7 @@ defmodule Mafia.RoomTest do
     Mafia.API.set_room_name("001", "테스트 방")
 
     room_id = Mafia.User.API.room_id("001")
-    Mafia.API.join_room("002", room_id, "원희")
+    Mafia.API.join_room("002", 1, "원희")
 
     # 방장 위임
     Mafia.API.transfer_host("001", "002")

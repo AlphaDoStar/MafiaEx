@@ -35,4 +35,11 @@ defmodule Mafia.Game.Supervisor do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  def game_exists?(game_id) do
+    case Registry.lookup(Mafia.Game.Registry, game_id) do
+      [] -> false
+      [{pid, _}] -> Process.alive?(pid)
+    end
+  end
 end

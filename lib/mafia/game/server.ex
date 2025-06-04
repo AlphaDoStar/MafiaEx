@@ -142,7 +142,7 @@ defmodule Mafia.Game.Server do
     new_state = put_in(state, [:phase_states, :vote, :voted, id], true)
     player_count =
       new_state.players
-      |> Enum.count(fn {_id, %{alive: alive}} -> alive end)
+      |> Enum.count(&alive?/1)
 
     vote_count =
       new_state.phase_states[:vote][:voted]
@@ -160,7 +160,7 @@ defmodule Mafia.Game.Server do
 
     player_count =
       new_state.players
-      |> Enum.count(fn {_id, %{alive: alive}} -> alive end)
+      |> Enum.count(&alive?/1)
 
     vote_count =
       new_state.phase_states[:vote][:voted]
@@ -251,7 +251,7 @@ defmodule Mafia.Game.Server do
 
     player_count =
       new_state.players
-      |> Enum.count(fn {_id, %{alive: alive}} -> alive end)
+      |> Enum.count(&alive?/1)
 
     judgment = new_state.phase_states[:judgment]
     vote_count = judgment.approval + judgment.rejection
@@ -389,24 +389,27 @@ defmodule Mafia.Game.Server do
   defp game_over?(players) do
     cond do
       citizen_win?(players) -> %{over: true, win: :citizen}
-      mafia_win?(players) -> %{over: false, win: :mafia}
+      mafia_win?(players) -> %{over: true, win: :mafia}
       true -> %{over: false, win: nil}
     end
   end
 
   defp citizen_win?(players) do
-    Enum.all?(players, fn {_id, %{role: role}} ->
+    players
+    |> Enum.filter(&alive?/1)
+    |> Enum.all?(fn {_id, %{role: role}} ->
       Role.team(role) != :mafia
     end)
   end
 
   defp mafia_win?(players) do
-    players
-    |> Enum.filter(fn {_id, %{role: role}} ->
-      Role.team(role) == :mafia
-    end)
+    alive_players = Enum.filter(players, &alive?/1)
+    alive_players
+    |> Enum.filter(fn {_id, %{role: role}} -> Role.team(role) == :mafia end)
     |> Enum.count()
     |> Kernel.*(2)
-    |> Kernel.>=(map_size(players))
+    |> Kernel.>=(Enum.count(alive_players))
   end
+
+  defp alive?({_id, %{alive: alive}}), do: alive
 end

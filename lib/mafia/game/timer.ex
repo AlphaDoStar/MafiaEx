@@ -34,6 +34,11 @@ defmodule Mafia.Game.Timer do
     GenServer.cast(via_tuple(game_id), :stop)
   end
 
+  @spec shutdown(id()) :: :ok
+  def shutdown(game_id) do
+    GenServer.cast(via_tuple(game_id), :shutdown)
+  end
+
   @spec remaining(id()) :: pos_integer()
   def remaining(game_id) do
     GenServer.call(via_tuple(game_id), :remaining)
@@ -106,6 +111,11 @@ defmodule Mafia.Game.Timer do
   end
 
   @impl true
+  def handle_cast(:shutdown, state) do
+    {:stop, :normal, state}
+  end
+
+  @impl true
   def handle_call(:remaining, _from, %{status: :running} = state) do
     elapsed = System.monotonic_time(:millisecond) - state.start_time
     remaining = max(0, state.duration - elapsed)
@@ -117,23 +127,29 @@ defmodule Mafia.Game.Timer do
 
   @impl true
   def handle_info({:timer_expired, :main, callback}, state) do
-    try do
-      callback.()
-    rescue
-      error ->
-        Logger.error("Mafia.Game.Timer callback error: #{error}")
-    end
+    Task.start(fn ->
+      try do
+        callback.()
+      rescue
+        error ->
+          Logger.error("Mafia.Game.Timer callback error: #{Exception.message(error)}")
+      end
+    end)
+
     {:noreply, %{state | status: :expired}}
   end
 
   @impl true
   def handle_info({:timer_expired, :milestone, callback}, state) do
-    try do
-      callback.()
-    rescue
-      error ->
-        Logger.error("Mafia.Game.Timer callback error: #{error}")
-    end
+    Task.start(fn ->
+      try do
+        callback.()
+      rescue
+        error ->
+          Logger.error("Mafia.Game.Timer callback error: #{Exception.message(error)}")
+      end
+    end)
+
     {:noreply, state}
   end
 

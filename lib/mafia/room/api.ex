@@ -56,11 +56,6 @@ defmodule Mafia.Room.API do
     GenServer.call(via_tuple(room_id), {:toggle_active_roles, indices})
   end
 
-  @spec game_started?(State.id()) :: boolean()
-  def game_started?(room_id) do
-    GenServer.call(via_tuple(room_id), :game_started?)
-  end
-
   @spec state(State.id()) :: State.t()
   def state(room_id) do
     GenServer.call(via_tuple(room_id), :state)

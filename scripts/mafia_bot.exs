@@ -1,6 +1,6 @@
 Mix.install([
-  # {:iris_ex, git: "https://github.com/AlphaDoStar/IrisEx.git", tag: "v0.3.3"},
-  {:iris_ex, path: "../IrisEx"},
+  {:iris_ex, git: "https://github.com/AlphaDoStar/IrisEx.git", tag: "v0.3.3"},
+  # {:iris_ex, path: "../IrisEx"},
   {:mafia, path: "."}
 ])
 

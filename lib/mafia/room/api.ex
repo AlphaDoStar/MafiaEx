@@ -61,9 +61,10 @@ defmodule Mafia.Room.API do
     GenServer.call(via_tuple(room_id), :state)
   end
 
-  @spec create_meeting(State.id(), atom(), [State.id()]) :: State.id()
-  def create_meeting(room_id, meeting_name, members) do
-    GenServer.call(via_tuple(room_id), {:create_meeting, meeting_name, members})
+  @type create_meeting_opts :: [muted: boolean(), speakers: [State.id()]]
+  @spec create_meeting(State.id(), atom(), [State.id()], create_meeting_opts()) :: State.id()
+  def create_meeting(room_id, meeting_name, member_ids, opts \\ []) do
+    GenServer.call(via_tuple(room_id), {:create_meeting, meeting_name, member_ids, opts})
   end
 
   @spec end_meetings(State.id()) :: :ok

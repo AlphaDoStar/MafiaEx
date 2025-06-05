@@ -217,6 +217,12 @@ defmodule Mafia.Game.Server do
   end
 
   @impl true
+  def handle_call(:defendant, _from, %State{} = state) do
+    [{defendant, _} | _] = state.phase_states[:vote][:result][:counts]
+    {:reply, defendant, state}
+  end
+
+  @impl true
   def handle_call(:begin_judgment, _from, %State{} = state) do
     judgment =
       %{

@@ -17,8 +17,7 @@ defmodule Mafia do
 
       Mafia.Room.Supervisor,
       Mafia.Game.Supervisor,
-
-      Mafia.User.API
+      Mafia.User.Agent
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

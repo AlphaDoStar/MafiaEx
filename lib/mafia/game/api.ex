@@ -80,6 +80,10 @@ defmodule Mafia.Game.API do
     GenServer.call(via_tuple(game_id), :begin_defense)
   end
 
+  def defendant(game_id) do
+    GenServer.call(via_tuple(game_id), :defendant)
+  end
+
   def begin_judgment(game_id) do
     GenServer.call(via_tuple(game_id), :begin_judgment)
   end

@@ -13,13 +13,14 @@ defmodule Mafia.Room.State do
     name: String.t(),
     meeting: atom()
   }
+  @type mute_map :: %{id() => muted :: boolean()}
   @type t :: %__MODULE__{
     id: id(),
     name: String.t(),
     host: id(),
     settings: settings(),
     members: %{id() => member()},
-    meetings: %{atom() => [id()]}
+    meetings: %{atom() => mute_map()}
   }
 
   @enforce_keys [:id, :name, :host, :members]

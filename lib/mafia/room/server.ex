@@ -51,10 +51,9 @@ defmodule Mafia.Room.Server do
       |> then(fn new_state ->
         case member.meeting do
           nil -> new_state
-          meeting -> update_in(new_state, [:meetings, meeting], &List.delete(&1, id))
+          meeting -> update_in(new_state, [:meetings, meeting], &Map.delete(&1, id))
         end
       end)
-
     {:reply, member.name, new_state}
   end
 
@@ -69,10 +68,19 @@ defmodule Mafia.Room.Server do
   @impl true
   def handle_call({:broadcast_member_message, user_id, message}, _from, %State{} = state) do
     user = state.members[user_id]
-
     lobby_members = lobby_members(state, user_id)
-    meeting_members = meeting_members(state, user_id, user.meeting)
-    recipients = lobby_members ++ meeting_members
+    recipients =
+      case user.meeting do
+        nil ->
+          lobby_members
+
+        meeting ->
+          if state.meetings[meeting][user_id] do
+            lobby_members
+          else
+            lobby_members ++ meeting_members(state, user_id, meeting)
+          end
+      end
 
     text = "💬 #{user.name} ⟩  #{message}"
     Mafia.Messenger.send_text_to_many(recipients, text)
@@ -99,15 +107,26 @@ defmodule Mafia.Room.Server do
   end
 
   @impl true
-  def handle_call({:create_meeting, name, ids}, _from, %State{} = state) do
-    id_set = MapSet.new(ids)
+  def handle_call({:create_meeting, name, ids, opts}, _from, %State{} = state) do
+    muted = Keyword.get(opts, :muted, false)
+    speakers = Keyword.get(opts, :speakers, [])
+    mute_map =
+      Enum.map(ids, fn id ->
+        if muted do
+          {id, id not in speakers}
+        else
+          {id, false}
+        end
+      end)
+      |> Map.new()
+
     new_state =
       state
-      |> put_in([:meetings, name], ids)
+      |> put_in([:meetings, name], mute_map)
       |> Map.update!(:members, fn members ->
         Enum.map(members, fn {id, member} ->
           new_member =
-            if MapSet.member?(id_set, id) do
+            if id in ids do
               %{member | meeting: name}
             else
               member
@@ -131,7 +150,6 @@ defmodule Mafia.Room.Server do
         |> Enum.map(fn {id, member} -> {id, %{member | meeting: nil}} end)
         |> Map.new()
       end)
-
     {:reply, :ok, new_state}
   end
 
